@@ -91,7 +91,3 @@ node index.js --help
 ## License
 
 MIT
-
-
-
-Translated with DeepL.com (free version)
