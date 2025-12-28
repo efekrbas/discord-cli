@@ -1,6 +1,6 @@
 # Discord CLI
 
-Terminal-based Discord chat interface. Allows you to use Discord in the terminal.
+A terminal-based Discord chat interface. Allows you to use Discord in the terminal.
 
 ## Features
 
@@ -18,12 +18,12 @@ Terminal-based Discord chat interface. Allows you to use Discord in the terminal
 npm install
 ```
 
-3. Create a `.env` file and add your Discord User Token:
+3. Add your token to the `.env` file
 ```
 DISCORD_USER_TOKEN=your_user_token_here
 ```
 
-### How to Get Discord User Token?
+### How to Get Your Discord User Token?
 
 **Method 1: Browser Developer Tools (Recommended)**
 1. Open Discord in your browser (https://discord.com/app)
@@ -31,20 +31,20 @@ DISCORD_USER_TOKEN=your_user_token_here
 3. Go to the **Application** tab
 4. Select **Local Storage** > **https://discord.com** from the left menu
 5. Find the `token` key and copy its value
-6. Add the token to the `.env` file
+6. Add the token to your `.env` file
 
 **Method 2: Network Tab**
 1. Open Discord in your browser
-2. Open Developer Tools with `F12`
+2. Press `F12` to open Developer Tools
 3. Go to the **Network** tab
 4. Click on any request
-5. Find and copy the `authorization` value in the **Headers** section
+5. Find the `authorization` value in the **Headers** section and copy it
 
 **Important Notes:**
 - Never share your user token!
-- Your token provides full access to your account
-- If your token is leaked, change your account immediately
-- According to Discord's ToS, self-bot usage may be prohibited, use at your own risk
+- Your token grants full access to your account
+- If your token is compromised, change your account immediately
+- Using self-bots may be prohibited under Discord's ToS; use at your own risk
 
 ## Usage
 
@@ -66,10 +66,15 @@ node index.js --help
 
 ## Keyboard Shortcuts
 
-- `Esc` or `q`: Exit
-- `Ctrl+C`: Exit
+- `Esc`: Exit
+- `Ctrl+C`: Clear embedbox
 - `k`, `j`: Navigate between messages (vim-style)
 - `Enter`: Send message
+
+## Commands
+
+- `/reply`: Reply
+- `/img` : Open image file 
 
 ## Requirements
 
@@ -80,10 +85,13 @@ node index.js --help
 ## Notes
 
 - Never share your user token
-- Don't add the `.env` file to git (it's already in .gitignore)
-- You connect through your own account using a user token
-- According to Discord's ToS, self-bot usage may be prohibited, use at your own risk
+- You connect via your own account using the user token
+- According to Discord's ToS, self-bot usage may be prohibited; use at your own risk
 
 ## License
 
 MIT
+
+
+
+Translated with DeepL.com (free version)
