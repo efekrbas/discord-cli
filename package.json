@@ -1,0 +1,30 @@
+{
+  "name": "discord-cli",
+  "version": "1.0.0",
+  "description": "Terminal tabanlı Discord chat arayüzü",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "discord-cli": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "chat": "node index.js chat"
+  },
+  "keywords": [
+    "discord",
+    "cli",
+    "terminal",
+    "chat"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js-selfbot-v13": "^2.14.12",
+    "blessed": "^0.1.81",
+    "chalk": "^5.3.0",
+    "gradient-string": "^2.0.2",
+    "dotenv": "^16.3.1"
+  }
+}
+
