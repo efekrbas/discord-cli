@@ -80,7 +80,6 @@ node index.js --help
 
 - Node.js 18+ 
 - Discord User Token
-- Your Discord account
 
 ## Notes
 
