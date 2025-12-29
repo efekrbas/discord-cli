@@ -7,8 +7,10 @@ A terminal-based Discord chat interface. Allows you to use Discord in the termin
 - 🎨 Modern terminal interface
 - 💬 Real-time messaging
 - ⌨️ Vim-style navigation (k, j keys)
-- 🖼️ Image support (images are displayed as [Image])
+- 🖼️ Image and file support (displayed with colored indicators)
+- 📎 File upload support
 - ✏️ Edit and delete messages
+- 💬 Reply to messages
 - 🚀 Fast and lightweight
 
 ## Installation
@@ -85,12 +87,27 @@ node index.js --help
 
 ## Commands
 
+- `/upload <file_path>`: Upload a file to the channel
+- `/view <message_id>`: Open file/image in browser
 - `/reply <message_id> <message>`: Reply to a message
 - `/r <message_id> <message>`: Reply to a message (short form)
-- `/img <message_id>`: Open image file in browser
 - `/edit <message_id> <new_message>`: Edit a message (only your own messages)
 - `/delete <message_id>`: Delete a message (only your own messages)
-- `/help`: Show available commands 
+- `/help`: Show available commands
+
+### File Upload Examples
+```bash
+# Upload a single file
+/upload C:\Users\username\Desktop\image.png
+
+# Upload file with spaces in path
+/upload "C:\Users\username\My Documents\file.pdf"
+```
+
+### Message ID Format
+- Message IDs are displayed in yellow color within blue parentheses
+- File names are displayed in yellow within blue brackets
+- Example: `[File: filename.png] (1455312755623067821)` 
 
 ## Requirements
 

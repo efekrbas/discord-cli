@@ -3,6 +3,9 @@ import { Client } from 'discord.js-selfbot-v13';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
 import { exec } from 'child_process';
+import { writeFileSync, unlinkSync, existsSync } from 'fs';
+import { join, basename } from 'path';
+import { tmpdir } from 'os';
 
 dotenv.config();
 
@@ -11,7 +14,7 @@ let currentChannel = null;
 let channels = [];
 let messages = [];
 let messageMap = new Map();
-let messageImages = new Map();
+let messageFiles = new Map(); // Stores file URLs for all attachments (images and files)
 let deletedMessageIds = new Set(); // Track deleted messages
 let sentMessageIds = new Set(); // Track messages we've already added manually
 let selectedIndex = 0;
@@ -19,16 +22,93 @@ let mode = 'threads';
 let replyToMessageId = null;
 
 // Global fonksiyonlar
-function openImageInBrowser(url) {
-  // Windows için özel komut - "" ile URL'yi escape et ve yeni pencere açma
-  const command = process.platform === 'win32' ? `start "" "${url}"` :
-                  process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
-  
-  exec(command, (error) => {
-    if (error) {
-      console.error('Resim açma hatası:', error);
+async function openFileInBrowser(url, fileName = null) {
+  try {
+    // Check if file is a text file (js, txt, json, etc.)
+    const textExtensions = ['.js', '.txt', '.json', '.html', '.css', '.md', '.xml', '.yaml', '.yml', '.log', '.csv', '.ts', '.jsx', '.tsx', '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.sh', '.bat', '.ps1'];
+    const isTextFile = fileName && textExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
+    
+    if (isTextFile) {
+      // Fetch file content and create HTML viewer
+      const response = await fetch(url);
+      const content = await response.text();
+      
+      // Create HTML viewer with syntax highlighting
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${fileName || 'File Viewer'}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.6;
     }
-  });
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    code {
+      color: #d4d4d4;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="color: #4ec9b0; margin-top: 0;">${fileName || 'File'}</h2>
+  <pre><code>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&/g, '&amp;')}</code></pre>
+</body>
+</html>`;
+      
+      // Create temporary HTML file
+      const tempFile = join(tmpdir(), `discord-cli-viewer-${Date.now()}.html`);
+      writeFileSync(tempFile, html, 'utf8');
+      
+      // Open HTML file in browser
+      const command = process.platform === 'win32' ? `start "" "${tempFile}"` :
+                      process.platform === 'darwin' ? `open "${tempFile}"` : `xdg-open "${tempFile}"`;
+      
+      exec(command, (error) => {
+        if (error) {
+          console.error('Error opening file:', error);
+        } else {
+          // Clean up temp file after 5 seconds
+          setTimeout(() => {
+            try {
+              unlinkSync(tempFile);
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+          }, 5000);
+        }
+      });
+    } else {
+      // For non-text files, open directly
+      const command = process.platform === 'win32' ? `start "" "${url}"` :
+                      process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+      
+      exec(command, (error) => {
+        if (error) {
+          console.error('Error opening file:', error);
+        }
+      });
+    }
+  } catch (error) {
+    // Fallback: try to open URL directly
+    const command = process.platform === 'win32' ? `start "" "${url}"` :
+                    process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+    
+    exec(command, (error) => {
+      if (error) {
+        console.error('Dosya açma hatası:', error);
+      }
+    });
+  }
 }
 
 export async function startChat() {
@@ -181,7 +261,7 @@ export async function startChat() {
       messageList.show();
       input.show();
       input.focus();
-      helpText.setContent('Esc: back, Ctrl+D: clear input, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /help: commands');
+      helpText.setContent('Esc: back, Ctrl+D: clear input, /upload <path>: upload file, /view <id>: open file, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /help: commands');
     }
     screen.render();
   }
@@ -190,23 +270,25 @@ export async function startChat() {
     try {
       let content = '';
       for (const msg of messages) {
-        const time = new Date(msg.timestamp).toLocaleTimeString('tr-TR', { 
+        const time = new Date(msg.timestamp).toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit' 
         });
         
         let messageContent = '';
         if (msg.isImage) {
-          const imageUrl = messageImages.get(msg.messageId);
-          if (imageUrl && msg.messageId) {
-            messageContent = `{blue-fg}[Resim]{/blue-fg} {gray-fg}(Görüntülemek için: /img ${msg.messageId.substring(0, 8)}){/gray-fg}`;
+          const fileUrl = messageFiles.get(msg.messageId);
+          if (msg.fileName) {
+            messageContent = `{blue-fg}[File: {/blue-fg}{yellow-fg}${msg.fileName}{/yellow-fg}{blue-fg}]{/blue-fg}`;
+          } else if (fileUrl && msg.messageId) {
+            messageContent = `{blue-fg}[Image]{/blue-fg}`;
           } else {
-            messageContent = `{blue-fg}[Resim]{/blue-fg}`;
+            messageContent = `{blue-fg}[File]{/blue-fg}`;
           }
         } else if (msg.content && msg.content.trim()) {
           messageContent = msg.content;
         } else {
-          messageContent = '{gray-fg}(boş mesaj){/gray-fg}';
+          messageContent = '{gray-fg}(empty message){/gray-fg}';
         }
 
         // Add "message deleted" if message was deleted
@@ -225,9 +307,9 @@ export async function startChat() {
 
         const isSystemMessage = msg.username === 'System';
         const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (msg.isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${msg.username}{/cyan-fg}`);
-        const idInfo = (msg.messageId && !isSystemMessage) ? `(${msg.messageId})` : '';
+        const idInfo = (msg.messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${msg.messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
         
-        content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo ? ' ' + idInfo : ''}\n\n`;
+        content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
       }
       
       messageList.setContent(content);
@@ -238,23 +320,28 @@ export async function startChat() {
     }
   }
 
-  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null) {
+  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null, fileName = null) {
     try {
-      const time = new Date(timestamp).toLocaleTimeString('tr-TR', { 
+      const time = new Date(timestamp).toLocaleTimeString('en-US', { 
         hour: '2-digit', 
         minute: '2-digit' 
       });
       
       let messageContent = '';
-      if (isImage && imageUrl) {
-        messageContent = `{blue-fg}[Resim]{/blue-fg} {gray-fg}(Görüntülemek için: /img ${messageId.substring(0, 8)}){/gray-fg}`;
-        messageImages.set(messageId, imageUrl);
+      if (isImage && fileName) {
+        messageContent = `{blue-fg}[File: {/blue-fg}{yellow-fg}${fileName}{/yellow-fg}{blue-fg}]{/blue-fg}`;
+        if (imageUrl) {
+          messageFiles.set(messageId, { url: imageUrl, fileName: fileName });
+        }
+      } else if (isImage && imageUrl) {
+        messageContent = `{blue-fg}[Image]{/blue-fg}`;
+        messageFiles.set(messageId, { url: imageUrl, fileName: null });
       } else if (isImage) {
-        messageContent = `{blue-fg}[Resim]{/blue-fg}`;
+        messageContent = `{blue-fg}[File]{/blue-fg}`;
       } else if (content && content.trim()) {
         messageContent = content;
       } else {
-        messageContent = '{gray-fg}(boş mesaj){/gray-fg}';
+        messageContent = '{gray-fg}(empty message){/gray-fg}';
       }
 
       let replyInfo = '';
@@ -269,11 +356,11 @@ export async function startChat() {
       // Sistem mesajları için ID gösterme
       const isSystemMessage = username === 'System';
       const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${username}{/cyan-fg}`);
-      const idInfo = (messageId && !isSystemMessage) ? `(${messageId})` : '';
+      const idInfo = (messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
       
-      const message = `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo ? ' ' + idInfo : ''}\n\n`;
+      const message = `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
       
-      const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId, replyTo };
+      const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId, replyTo, fileName };
       
       // Check if message already exists to prevent duplicates
       if (messageId && messageMap.has(messageId)) {
@@ -305,7 +392,7 @@ export async function startChat() {
       messageList.setContent('');
       messages = [];
       messageMap.clear();
-      messageImages.clear();
+      messageFiles.clear();
       deletedMessageIds.clear();
       sentMessageIds.clear();
 
@@ -315,9 +402,11 @@ export async function startChat() {
         const replyTo = msg.reference?.messageId || null;
         
         let imageUrl = null;
+        let fileName = null;
         if (hasImage) {
           const attachment = msg.attachments.first();
           imageUrl = attachment?.url || null;
+          fileName = attachment?.name || null;
         }
         
         addMessage(
@@ -328,11 +417,12 @@ export async function startChat() {
           isOwn,
           msg.id,
           replyTo,
-          imageUrl
+          imageUrl,
+          fileName
         );
       }
     } catch (error) {
-      addMessage('System', `Mesajlar yüklenirken hata: ${error.message}`, Date.now());
+      addMessage('System', `Error loading messages: ${error.message}`, Date.now());
     }
   }
 
@@ -457,9 +547,11 @@ export async function startChat() {
         const replyTo = message.reference?.messageId || null;
         
         let imageUrl = null;
+        let fileName = null;
         if (hasImage) {
           const attachment = message.attachments.first();
           imageUrl = attachment?.url || null;
+          fileName = attachment?.name || null;
         }
         
         addMessage(
@@ -470,7 +562,8 @@ export async function startChat() {
           isOwnMessage,
           message.id,
           replyTo,
-          imageUrl
+          imageUrl,
+          fileName
         );
         
         setImmediate(() => {
@@ -526,23 +619,63 @@ export async function startChat() {
         const parts = trimmedValue.split(' ');
         const command = parts[0].substring(1).toLowerCase();
         
-        if (command === 'img' && parts.length >= 2) {
+        if (command === 'upload' && parts.length >= 2) {
+          const filePath = parts.slice(1).join(' ').trim().replace(/^["']|["']$/g, '');
+          
+          if (!existsSync(filePath)) {
+            addMessage('System', `File not found: ${filePath}`, Date.now());
+          } else {
+            try {
+              addMessage('System', 'Uploading file...', Date.now());
+              
+              const sentMessage = await currentChannel.send({
+                files: [{
+                  attachment: filePath,
+                  name: basename(filePath)
+                }]
+              });
+              
+              sentMessageIds.add(sentMessage.id);
+              const hasImage = sentMessage.attachments && sentMessage.attachments.size > 0;
+              let imageUrl = null;
+              let fileName = null;
+              if (hasImage) {
+                const attachment = sentMessage.attachments.first();
+                imageUrl = attachment?.url || null;
+                fileName = attachment?.name || null;
+              }
+              
+              addMessage(client.user.username, '', sentMessage.createdTimestamp, hasImage, true, sentMessage.id, null, imageUrl, fileName);
+            } catch (error) {
+              addMessage('System', `Error uploading file: ${error.message}`, Date.now());
+            }
+          }
+        }
+        else if (command === 'upload') {
+          addMessage('System', 'Usage: /upload <file_path>', Date.now());
+        }
+        else if (command === 'view' && parts.length >= 2) {
           const shortId = parts[1];
           
-          let foundImageUrl = null;
-          for (const [msgId, imgUrl] of messageImages.entries()) {
+          let foundFileInfo = null;
+          for (const [msgId, fileInfo] of messageFiles.entries()) {
             if (msgId.startsWith(shortId)) {
-              foundImageUrl = imgUrl;
+              foundFileInfo = fileInfo;
               break;
             }
           }
           
-          if (foundImageUrl) {
-            openImageInBrowser(foundImageUrl);
-            addMessage('System', 'Resim tarayıcıda açılıyor...', Date.now());
+          if (foundFileInfo) {
+            const fileUrl = typeof foundFileInfo === 'string' ? foundFileInfo : foundFileInfo.url;
+            const fileName = typeof foundFileInfo === 'object' ? foundFileInfo.fileName : null;
+            openFileInBrowser(fileUrl, fileName);
+            addMessage('System', 'Opening file in browser...', Date.now());
           } else {
-            addMessage('System', `Resim bulunamadı. ID: ${shortId}`, Date.now());
+            addMessage('System', `File not found. ID: ${shortId}`, Date.now());
           }
+        }
+        else if (command === 'view') {
+          addMessage('System', 'Usage: /view <message_id>', Date.now());
         }
         else if (command === 'reply' && parts.length >= 3) {
           const replyToId = parts[1];
@@ -553,10 +686,12 @@ export async function startChat() {
             reply: { messageReference: replyToId }
           });
           
-          // Mark as sent to prevent duplicate from messageCreate event
           sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
+        }
+        else if (command === 'reply') {
+          addMessage('System', 'Usage: /reply <message_id> <message>', Date.now());
         }
         else if (command === 'r' && parts.length >= 3) {
           const replyToId = parts[1];
@@ -567,10 +702,12 @@ export async function startChat() {
             reply: { messageReference: replyToId }
           });
           
-          // Mark as sent to prevent duplicate from messageCreate event
           sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
+        }
+        else if (command === 'r') {
+          addMessage('System', 'Usage: /r <message_id> <message>', Date.now());
         }
         else if (command === 'delete' && parts.length >= 2) {
           const messageId = parts[1];
@@ -578,20 +715,22 @@ export async function startChat() {
           try {
             const message = await currentChannel.messages.fetch(messageId);
             
-            // Check if message belongs to current user
             if (message.author.id === client.user.id) {
               await message.delete();
-              addMessage('System', `Mesaj silindi: ${messageId}`, Date.now());
+              addMessage('System', `Message deleted: ${messageId}`, Date.now());
             } else {
-              addMessage('System', 'Sadece kendi mesajlarınızı silebilirsiniz.', Date.now());
+              addMessage('System', 'You can only delete your own messages.', Date.now());
             }
           } catch (error) {
             if (error.code === 10008) {
-              addMessage('System', `Mesaj bulunamadı: ${messageId}`, Date.now());
+              addMessage('System', `Message not found: ${messageId}`, Date.now());
             } else {
-              addMessage('System', `Mesaj silinirken hata oluştu: ${error.message}`, Date.now());
+              addMessage('System', `Error deleting message: ${error.message}`, Date.now());
             }
           }
+        }
+        else if (command === 'delete') {
+          addMessage('System', 'Usage: /delete <message_id>', Date.now());
         }
         else if (command === 'edit' && parts.length >= 3) {
           const messageId = parts[1];
@@ -600,33 +739,34 @@ export async function startChat() {
           try {
             const message = await currentChannel.messages.fetch(messageId);
             
-            // Check if message belongs to current user
             if (message.author.id === client.user.id) {
               await message.edit(newContent);
-              addMessage('System', `Mesaj düzenlendi: ${messageId}`, Date.now());
+              addMessage('System', `Message edited: ${messageId}`, Date.now());
               
-              // Update the message in our local storage
               if (messageMap.has(messageId)) {
                 const msgObj = messageMap.get(messageId);
                 msgObj.content = newContent;
                 renderAllMessages();
               }
             } else {
-              addMessage('System', 'Sadece kendi mesajlarınızı düzenleyebilirsiniz.', Date.now());
+              addMessage('System', 'You can only edit your own messages.', Date.now());
             }
           } catch (error) {
             if (error.code === 10008) {
-              addMessage('System', `Mesaj bulunamadı: ${messageId}`, Date.now());
+              addMessage('System', `Message not found: ${messageId}`, Date.now());
             } else {
-              addMessage('System', `Mesaj düzenlenirken hata oluştu: ${error.message}`, Date.now());
+              addMessage('System', `Error editing message: ${error.message}`, Date.now());
             }
           }
         }
+        else if (command === 'edit') {
+          addMessage('System', 'Usage: /edit <message_id> <new_message>', Date.now());
+        }
         else if (command === 'help') {
-          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil\n- /edit <mesaj_id> <yeni_mesaj>: Mesajı düzenle', Date.now());
+          addMessage('System', 'Commands:\n- /upload <file_path>: Upload file\n- /view <message_id>: Open file in browser\n- /reply <message_id> <message>: Reply to message\n- /r <message_id> <message>: Reply to message (short)\n- /delete <message_id>: Delete message\n- /edit <message_id> <new_message>: Edit message', Date.now());
         }
         else {
-          addMessage('System', `Bilinmeyen komut: ${command}. /help ile yardım alın.`, Date.now());
+          addMessage('System', `Unknown command: ${command}. Use /help for help.`, Date.now());
         }
       } else {
         const sentMessage = await currentChannel.send(trimmedValue);
@@ -637,7 +777,7 @@ export async function startChat() {
         replyToMessageId = null;
       }
     } catch (error) {
-      addMessage('System', `Hata: ${error.message}`, Date.now());
+      addMessage('System', `Error: ${error.message}`, Date.now());
     }
     
     setImmediate(() => {
