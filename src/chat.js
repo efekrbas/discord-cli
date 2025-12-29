@@ -181,7 +181,7 @@ export async function startChat() {
       messageList.show();
       input.show();
       input.focus();
-      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /help: commands');
+      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /help: commands');
     }
     screen.render();
   }
@@ -496,6 +496,20 @@ export async function startChat() {
     }
   });
 
+  client.on('messageUpdate', (oldMessage, newMessage) => {
+    try {
+      if (currentChannel && newMessage.channel.id === currentChannel.id && mode === 'chat') {
+        if (newMessage.id && messageMap.has(newMessage.id)) {
+          const msgObj = messageMap.get(newMessage.id);
+          msgObj.content = newMessage.content || '';
+          renderAllMessages();
+        }
+      }
+    } catch (error) {
+      console.error('messageUpdate error:', error);
+    }
+  });
+
   input.on('submit', async (value) => {
     const trimmedValue = (value || '').trim();
     
@@ -579,8 +593,37 @@ export async function startChat() {
             }
           }
         }
+        else if (command === 'edit' && parts.length >= 3) {
+          const messageId = parts[1];
+          const newContent = parts.slice(2).join(' ');
+          
+          try {
+            const message = await currentChannel.messages.fetch(messageId);
+            
+            // Check if message belongs to current user
+            if (message.author.id === client.user.id) {
+              await message.edit(newContent);
+              addMessage('System', `Mesaj düzenlendi: ${messageId}`, Date.now());
+              
+              // Update the message in our local storage
+              if (messageMap.has(messageId)) {
+                const msgObj = messageMap.get(messageId);
+                msgObj.content = newContent;
+                renderAllMessages();
+              }
+            } else {
+              addMessage('System', 'Sadece kendi mesajlarınızı düzenleyebilirsiniz.', Date.now());
+            }
+          } catch (error) {
+            if (error.code === 10008) {
+              addMessage('System', `Mesaj bulunamadı: ${messageId}`, Date.now());
+            } else {
+              addMessage('System', `Mesaj düzenlenirken hata oluştu: ${error.message}`, Date.now());
+            }
+          }
+        }
         else if (command === 'help') {
-          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil', Date.now());
+          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil\n- /edit <mesaj_id> <yeni_mesaj>: Mesajı düzenle', Date.now());
         }
         else {
           addMessage('System', `Bilinmeyen komut: ${command}. /help ile yardım alın.`, Date.now());

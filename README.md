@@ -8,6 +8,7 @@ A terminal-based Discord chat interface. Allows you to use Discord in the termin
 - 💬 Real-time messaging
 - ⌨️ Vim-style navigation (k, j keys)
 - 🖼️ Image support (images are displayed as [Image])
+- ✏️ Edit and delete messages
 - 🚀 Fast and lightweight
 
 ## Installation
@@ -87,6 +88,7 @@ node index.js --help
 - `/reply <message_id> <message>`: Reply to a message
 - `/r <message_id> <message>`: Reply to a message (short form)
 - `/img <message_id>`: Open image file in browser
+- `/edit <message_id> <new_message>`: Edit a message (only your own messages)
 - `/delete <message_id>`: Delete a message (only your own messages)
 - `/help`: Show available commands 
 

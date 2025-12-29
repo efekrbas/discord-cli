@@ -195,7 +195,7 @@ export async function startServer() {
       input.show();
       input.focus();
       modeHeader.setContent('{green-fg}Chat{/green-fg}');
-      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /delete <id>: delete, /help: commands');
+      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /delete <id>: delete, /help: commands');
     }
     screen.render();
   }
@@ -674,8 +674,37 @@ export async function startServer() {
             }
           }
         }
+        else if (command === 'edit' && parts.length >= 3) {
+          const messageId = parts[1];
+          const newContent = parts.slice(2).join(' ');
+          
+          try {
+            const message = await currentChannel.messages.fetch(messageId);
+            
+            // Check if message belongs to current user
+            if (message.author.id === client.user.id) {
+              await message.edit(newContent);
+              addMessage('System', `Mesaj düzenlendi: ${messageId}`, Date.now());
+              
+              // Update the message in our local storage
+              if (messageMap.has(messageId)) {
+                const msgObj = messageMap.get(messageId);
+                msgObj.content = newContent;
+                renderAllMessages();
+              }
+            } else {
+              addMessage('System', 'Sadece kendi mesajlarınızı düzenleyebilirsiniz.', Date.now());
+            }
+          } catch (error) {
+            if (error.code === 10008) {
+              addMessage('System', `Mesaj bulunamadı: ${messageId}`, Date.now());
+            } else {
+              addMessage('System', `Mesaj düzenlenirken hata oluştu: ${error.message}`, Date.now());
+            }
+          }
+        }
         else if (command === 'help') {
-          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil', Date.now());
+          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil\n- /edit <mesaj_id> <yeni_mesaj>: Mesajı düzenle', Date.now());
         }
         else {
           addMessage('System', `Bilinmeyen komut: ${command}. /help ile yardım alın.`, Date.now());
@@ -706,6 +735,43 @@ export async function startServer() {
     if (currentChannel && deletedMessage.channel.id === currentChannel.id && mode === 'chat') {
       deletedMessageIds.add(deletedMessage.id);
       renderAllMessages();
+    }
+  });
+
+  client.on('messageUpdate', (oldMessage, newMessage) => {
+    try {
+      if (currentChannel && newMessage.channel.id === currentChannel.id && mode === 'chat') {
+        if (newMessage.id && messageMap.has(newMessage.id)) {
+          const msgObj = messageMap.get(newMessage.id);
+          let messageContent = newMessage.content || '';
+          
+          // Handle embed messages
+          if (newMessage.embeds && newMessage.embeds.size > 0) {
+            const embed = newMessage.embeds.first();
+            if (embed.title) {
+              messageContent += (messageContent ? '\n' : '') + embed.title;
+            }
+            if (embed.description) {
+              messageContent += (messageContent ? '\n' : '') + embed.description;
+            }
+            if (embed.fields && embed.fields.length > 0) {
+              for (const field of embed.fields) {
+                if (field.name) {
+                  messageContent += (messageContent ? '\n' : '') + field.name + ':';
+                }
+                if (field.value) {
+                  messageContent += (messageContent ? '\n' : '') + field.value;
+                }
+              }
+            }
+          }
+          
+          msgObj.content = cleanMessageContent(messageContent);
+          renderAllMessages();
+        }
+      }
+    } catch (error) {
+      console.error('messageUpdate error:', error);
     }
   });
 
