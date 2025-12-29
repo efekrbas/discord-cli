@@ -12,6 +12,8 @@ let channels = [];
 let messages = [];
 let messageMap = new Map();
 let messageImages = new Map();
+let deletedMessageIds = new Set(); // Track deleted messages
+let sentMessageIds = new Set(); // Track messages we've already added manually
 let selectedIndex = 0;
 let mode = 'threads';
 let replyToMessageId = null;
@@ -184,6 +186,58 @@ export async function startChat() {
     screen.render();
   }
 
+  function renderAllMessages() {
+    try {
+      let content = '';
+      for (const msg of messages) {
+        const time = new Date(msg.timestamp).toLocaleTimeString('tr-TR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+        
+        let messageContent = '';
+        if (msg.isImage) {
+          const imageUrl = messageImages.get(msg.messageId);
+          if (imageUrl && msg.messageId) {
+            messageContent = `{blue-fg}[Resim]{/blue-fg} {gray-fg}(Görüntülemek için: /img ${msg.messageId.substring(0, 8)}){/gray-fg}`;
+          } else {
+            messageContent = `{blue-fg}[Resim]{/blue-fg}`;
+          }
+        } else if (msg.content && msg.content.trim()) {
+          messageContent = msg.content;
+        } else {
+          messageContent = '{gray-fg}(boş mesaj){/gray-fg}';
+        }
+
+        // Add "message deleted" if message was deleted
+        if (msg.messageId && deletedMessageIds.has(msg.messageId)) {
+          messageContent += ` {red-fg}[message deleted]{/red-fg}`;
+        }
+
+        let replyInfo = '';
+        if (msg.replyTo) {
+          const repliedMsg = messageMap.get(msg.replyTo);
+          if (repliedMsg) {
+            const replyContent = repliedMsg.content ? repliedMsg.content.substring(0, 30) : '[Media]';
+            replyInfo = `{yellow-fg}↪ Replying to ${repliedMsg.username}: ${replyContent}${replyContent.length >= 30 ? '...' : ''}{/yellow-fg}\n`;
+          }
+        }
+
+        const isSystemMessage = msg.username === 'System';
+        const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (msg.isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${msg.username}{/cyan-fg}`);
+        const idInfo = (msg.messageId && !isSystemMessage) ? `(${msg.messageId})` : '';
+        
+        content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo ? ' ' + idInfo : ''}\n\n`;
+      }
+      
+      messageList.setContent(content);
+      messageList.setScrollPerc(100);
+      screen.render();
+    } catch (error) {
+      console.error('renderAllMessages error:', error);
+    }
+  }
+
   function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null) {
     try {
       const time = new Date(timestamp).toLocaleTimeString('tr-TR', { 
@@ -212,15 +266,20 @@ export async function startChat() {
         }
       }
 
-      const prefix = isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${username}{/cyan-fg}`;
-      
       // Sistem mesajları için ID gösterme
       const isSystemMessage = username === 'System';
+      const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${username}{/cyan-fg}`);
       const idInfo = (messageId && !isSystemMessage) ? `(${messageId})` : '';
       
       const message = `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo ? ' ' + idInfo : ''}\n\n`;
       
-      const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId };
+      const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId, replyTo };
+      
+      // Check if message already exists to prevent duplicates
+      if (messageId && messageMap.has(messageId)) {
+        return;
+      }
+      
       messages.push(msgObj);
       
       if (messageId) {
@@ -247,6 +306,8 @@ export async function startChat() {
       messages = [];
       messageMap.clear();
       messageImages.clear();
+      deletedMessageIds.clear();
+      sentMessageIds.clear();
 
       for (const msg of sortedMessages) {
         const hasImage = msg.attachments && msg.attachments.size > 0;
@@ -387,7 +448,8 @@ export async function startChat() {
       if (currentChannel && message.channel.id === currentChannel.id && mode === 'chat') {
         const isOwnMessage = message.author.id === client.user.id;
         
-        if (isOwnMessage && messageMap.has(message.id)) {
+        // Skip if we've already added this message manually
+        if (messageMap.has(message.id) || (isOwnMessage && sentMessageIds.has(message.id))) {
           return;
         }
         
@@ -418,6 +480,19 @@ export async function startChat() {
       }
     } catch (error) {
       console.error('messageCreate error:', error);
+    }
+  });
+
+  client.on('messageDelete', (message) => {
+    try {
+      if (currentChannel && message.channel.id === currentChannel.id && mode === 'chat') {
+        if (message.id && messageMap.has(message.id)) {
+          deletedMessageIds.add(message.id);
+          renderAllMessages();
+        }
+      }
+    } catch (error) {
+      console.error('messageDelete error:', error);
     }
   });
 
@@ -464,6 +539,8 @@ export async function startChat() {
             reply: { messageReference: replyToId }
           });
           
+          // Mark as sent to prevent duplicate from messageCreate event
+          sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
         }
@@ -476,17 +553,43 @@ export async function startChat() {
             reply: { messageReference: replyToId }
           });
           
+          // Mark as sent to prevent duplicate from messageCreate event
+          sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
         }
+        else if (command === 'delete' && parts.length >= 2) {
+          const messageId = parts[1];
+          
+          try {
+            const message = await currentChannel.messages.fetch(messageId);
+            
+            // Check if message belongs to current user
+            if (message.author.id === client.user.id) {
+              await message.delete();
+              addMessage('System', `Mesaj silindi: ${messageId}`, Date.now());
+            } else {
+              addMessage('System', 'Sadece kendi mesajlarınızı silebilirsiniz.', Date.now());
+            }
+          } catch (error) {
+            if (error.code === 10008) {
+              addMessage('System', `Mesaj bulunamadı: ${messageId}`, Date.now());
+            } else {
+              addMessage('System', `Mesaj silinirken hata oluştu: ${error.message}`, Date.now());
+            }
+          }
+        }
         else if (command === 'help') {
-          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)', Date.now());
+          addMessage('System', 'Komutlar:\n- /img <mesaj_id>: Resmi tarayıcıda aç\n- /reply <mesaj_id> <mesaj>: Reply at\n- /r <mesaj_id> <mesaj>: Reply at (kısa)\n- /delete <mesaj_id>: Mesajı sil', Date.now());
         }
         else {
           addMessage('System', `Bilinmeyen komut: ${command}. /help ile yardım alın.`, Date.now());
         }
       } else {
         const sentMessage = await currentChannel.send(trimmedValue);
+        
+        // Mark as sent to prevent duplicate from messageCreate event
+        sentMessageIds.add(sentMessage.id);
         addMessage(client.user.username, trimmedValue, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToMessageId);
         replyToMessageId = null;
       }
@@ -513,7 +616,7 @@ export async function startChat() {
     }
   });
 
-  screen.key(['escape', 'q'], () => {
+  screen.key(['escape'], () => {
     if (mode === 'chat') {
       switchMode('threads');
       updateThreadList();

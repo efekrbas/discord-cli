@@ -48,7 +48,7 @@ DISCORD_USER_TOKEN=your_user_token_here
 
 ## Usage
 
-### Start chat:
+### Start chat (DMs and channels):
 ```bash
 npm start chat
 ```
@@ -57,6 +57,17 @@ or
 
 ```bash
 node index.js chat
+```
+
+### Start server browser (servers, categories, and channels):
+```bash
+npm start server
+```
+
+or
+
+```bash
+node index.js server
 ```
 
 ### Help:
@@ -73,8 +84,11 @@ node index.js --help
 
 ## Commands
 
-- `/reply`: Reply
-- `/img` : Open image file 
+- `/reply <message_id> <message>`: Reply to a message
+- `/r <message_id> <message>`: Reply to a message (short form)
+- `/img <message_id>`: Open image file in browser
+- `/delete <message_id>`: Delete a message (only your own messages)
+- `/help`: Show available commands 
 
 ## Requirements
 
