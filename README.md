@@ -79,7 +79,7 @@ node index.js --help
 ## Keyboard Shortcuts
 
 - `Esc`: Exit
-- `Ctrl+C`: Clear embedbox
+- `Ctrl+D`: Clear input box
 - `k`, `j`: Navigate between messages (vim-style)
 - `Enter`: Send message
 

@@ -195,7 +195,7 @@ export async function startServer() {
       input.show();
       input.focus();
       modeHeader.setContent('{green-fg}Chat{/green-fg}');
-      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /delete <id>: delete, /help: commands');
+      helpText.setContent('Esc: back, Ctrl+D: clear input, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /delete <id>: delete, /help: commands');
     }
     screen.render();
   }
@@ -731,6 +731,15 @@ export async function startServer() {
     screen.render();
   });
 
+  input.key(['C-d'], () => {
+    if (mode === 'chat') {
+      input.clearValue();
+      input.focus();
+      screen.render();
+    }
+  });
+
+
   client.on('messageDelete', (deletedMessage) => {
     if (currentChannel && deletedMessage.channel.id === currentChannel.id && mode === 'chat') {
       deletedMessageIds.add(deletedMessage.id);
@@ -851,9 +860,6 @@ export async function startServer() {
     }
   });
 
-  screen.key(['C-c'], () => {
-    return process.exit(0);
-  });
 
   try {
     await client.login(token);

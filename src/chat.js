@@ -153,7 +153,7 @@ export async function startChat() {
     left: 0,
     width: '100%',
     height: 3,
-    content: 'j/k: navigate, Enter: select, Esc: quit, Ctrl+C: quit',
+    content: 'j/k: navigate, Enter: select, Esc: quit',
     style: {
       bg: 'black',
       fg: 'gray'
@@ -175,13 +175,13 @@ export async function startChat() {
       messageList.hide();
       input.hide();
       threadList.focus();
-      helpText.setContent('j/k: navigate, Enter: select, Esc: quit, Ctrl+C: quit');
+      helpText.setContent('j/k: navigate, Enter: select, Esc: quit');
     } else if (mode === 'chat') {
       threadList.hide();
       messageList.show();
       input.show();
       input.focus();
-      helpText.setContent('Esc: back, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /help: commands');
+      helpText.setContent('Esc: back, Ctrl+D: clear input, /img <id>: open image, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /help: commands');
     }
     screen.render();
   }
@@ -651,13 +651,14 @@ export async function startChat() {
     screen.render();
   });
 
-  input.key(['C-c'], () => {
+  input.key(['C-d'], () => {
     if (mode === 'chat') {
       input.clearValue();
       input.focus();
       screen.render();
     }
   });
+
 
   screen.key(['escape'], () => {
     if (mode === 'chat') {
@@ -668,9 +669,6 @@ export async function startChat() {
     }
   });
 
-  screen.key(['C-c'], () => {
-    return process.exit(0);
-  });
 
   try {
     await client.login(token);
