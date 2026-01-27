@@ -82,7 +82,7 @@ node index.js --help
 
 - `Esc`: Exit
 - `Ctrl+D`: Clear input box
-- `k`, `j`: Navigate between messages (vim-style)
+- `down arrow key `, `up arrow key`: Navigate between messages (vim-style)
 - `Enter`: Send message
 
 ## Commands
