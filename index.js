@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { program } from './src/cli.js';
-import { startChat } from './src/chat.js';
+import { startChat } from './src/dm.js';
 import { startServer } from './src/server.js';
 import { showLogo } from './src/logo.js';
 import chalk from 'chalk';
@@ -18,15 +18,12 @@ if (args.length === 0) {
   process.exit(0);
 }
 
-if (args[0] === 'chat') {
+if (args[0] === 'dm') {
   startChat();
 } else if (args[0] === 'server') {
   startServer();
 } else if (args[0] === '--help' || args[0] === '-h') {
   program.help();
 } else {
-  console.log(chalk.red(`Bilinmeyen komut: ${args[0]}`));
-  console.log(chalk.yellow("'discord-cli --help' ile yardım alabilirsiniz."));
-  process.exit(1);
+  program.parse(process.argv);
 }
-

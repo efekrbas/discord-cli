@@ -6,9 +6,12 @@ A terminal-based Discord chat interface. Allows you to use Discord in the termin
 
 - 🎨 Modern terminal interface
 - 💬 Real-time messaging
-- ⌨️ Vim-style navigation (k, j keys)
-- 🖼️ Image and file support (displayed with colored indicators)
+- 🔔 Real-time notifications for new messages (per-user/channel)
+- ⌨️ Vim-style navigation (k, j keys) and arrow keys
+- 🖼️ Image, file, and sticker support
 - 📎 File upload support
+- 📌 Pin messages
+- ❤️ React to messages
 - ✏️ Edit and delete messages
 - 💬 Reply to messages
 - 🚀 Fast and lightweight
@@ -28,20 +31,7 @@ DISCORD_USER_TOKEN=your_user_token_here
 
 ### How to Get Your Discord User Token?
 
-**Method 1: Browser Developer Tools (Recommended)**
-1. Open Discord in your browser (https://discord.com/app)
-2. Press `F12` to open Developer Tools
-3. Go to the **Application** tab
-4. Select **Local Storage** > **https://discord.com** from the left menu
-5. Find the `token` key and copy its value
-6. Add the token to your `.env` file
-
-**Method 2: Network Tab**
-1. Open Discord in your browser
-2. Press `F12` to open Developer Tools
-3. Go to the **Network** tab
-4. Click on any request
-5. Find the `authorization` value in the **Headers** section and copy it
+- https://youtu.be/rcwWex7aqTo (If you don't know how to get it, watch this video.)
 
 **Important Notes:**
 - Never share your user token!
@@ -51,24 +41,18 @@ DISCORD_USER_TOKEN=your_user_token_here
 
 ## Usage
 
-### Start chat (DMs and channels):
+### Start DM/Chat interface:
 ```bash
-npm start chat
+npm run dm
 ```
 
 or
 
 ```bash
-node index.js chat
+node index.js dm
 ```
 
 ### Start server browser (servers, categories, and channels):
-```bash
-npm start server
-```
-
-or
-
 ```bash
 node index.js server
 ```
@@ -82,17 +66,19 @@ node index.js --help
 
 - `Esc`: Exit
 - `Ctrl+D`: Clear input box
-- `j `, `k`: Navigate between messages (vim-style)
+- `j`, `k` or `Up`, `Down`: Navigate between messages (vim-style or arrow keys)
 - `Enter`: Send message
 
 ## Commands
 
 - `/upload <file_path>`: Upload a file to the channel
-- `/view <message_id>`: Open file/image in browser
+- `/view <message_id>`: Open file/image/sticker in browser
 - `/reply <message_id> <message>`: Reply to a message
 - `/r <message_id> <message>`: Reply to a message (short form)
 - `/edit <message_id> <new_message>`: Edit a message (only your own messages)
 - `/delete <message_id>`: Delete a message (only your own messages)
+- `/pin <message_id>`: Pin a message
+- `/react <message_id> <emoji>`: Add a reaction to a message
 - `/help`: Show available commands
 
 ### File Upload Examples
@@ -106,8 +92,9 @@ node index.js --help
 
 ### Message ID Format
 - Message IDs are displayed in yellow color within blue parentheses
-- File names are displayed in yellow within blue brackets
+- File/Sticker names are displayed in yellow within blue brackets
 - Example: `[File: filename.png] (1455312755623067821)` 
+- Sticker Example: `[Sticker: StickerName] (1455312755623067822)`
 
 ## Requirements
 

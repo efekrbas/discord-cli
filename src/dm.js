@@ -20,6 +20,7 @@ let sentMessageIds = new Set(); // Track messages we've already added manually
 let selectedIndex = 0;
 let mode = 'threads';
 let replyToMessageId = null;
+let unreadCounts = new Map(); // Store unread counts by channel ID
 
 // Global fonksiyonlar
 async function openFileInBrowser(url, fileName = null) {
@@ -27,12 +28,12 @@ async function openFileInBrowser(url, fileName = null) {
     // Check if file is a text file (js, txt, json, etc.)
     const textExtensions = ['.js', '.txt', '.json', '.html', '.css', '.md', '.xml', '.yaml', '.yml', '.log', '.csv', '.ts', '.jsx', '.tsx', '.py', '.java', '.c', '.cpp', '.h', '.hpp', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.sh', '.bat', '.ps1'];
     const isTextFile = fileName && textExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
-    
+
     if (isTextFile) {
       // Fetch file content and create HTML viewer
       const response = await fetch(url);
       const content = await response.text();
-      
+
       // Create HTML viewer with syntax highlighting
       const html = `<!DOCTYPE html>
 <html>
@@ -64,15 +65,15 @@ async function openFileInBrowser(url, fileName = null) {
   <pre><code>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&/g, '&amp;')}</code></pre>
 </body>
 </html>`;
-      
+
       // Create temporary HTML file
       const tempFile = join(tmpdir(), `discord-cli-viewer-${Date.now()}.html`);
       writeFileSync(tempFile, html, 'utf8');
-      
+
       // Open HTML file in browser
       const command = process.platform === 'win32' ? `start "" "${tempFile}"` :
-                      process.platform === 'darwin' ? `open "${tempFile}"` : `xdg-open "${tempFile}"`;
-      
+        process.platform === 'darwin' ? `open "${tempFile}"` : `xdg-open "${tempFile}"`;
+
       exec(command, (error) => {
         if (error) {
           console.error('Error opening file:', error);
@@ -90,8 +91,8 @@ async function openFileInBrowser(url, fileName = null) {
     } else {
       // For non-text files, open directly
       const command = process.platform === 'win32' ? `start "" "${url}"` :
-                      process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
-      
+        process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+
       exec(command, (error) => {
         if (error) {
           console.error('Error opening file:', error);
@@ -101,8 +102,8 @@ async function openFileInBrowser(url, fileName = null) {
   } catch (error) {
     // Fallback: try to open URL directly
     const command = process.platform === 'win32' ? `start "" "${url}"` :
-                    process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
-    
+      process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+
     exec(command, (error) => {
       if (error) {
         console.error('Dosya açma hatası:', error);
@@ -111,10 +112,10 @@ async function openFileInBrowser(url, fileName = null) {
   }
 }
 
-export async function startChat() {
+export async function startChat(selectedToken = null) {
   console.log(chalk.cyan('\nStarting Discord Chat...\n'));
 
-  const token = process.env.DISCORD_USER_TOKEN;
+  const token = selectedToken || process.env.DISCORD_USER_TOKEN;
   if (!token) {
     console.error(chalk.red('HATA: DISCORD_USER_TOKEN environment variable bulunamadı!'));
     console.log(chalk.yellow('\nLütfen .env dosyası oluşturup DISCORD_USER_TOKEN değerini ekleyin.'));
@@ -133,7 +134,7 @@ export async function startChat() {
 
   const screen = blessed.screen({
     smartCSR: true,
-    title: 'discord-cli chat',
+    title: 'Discord CLI - DM',
     fullUnicode: true
   });
 
@@ -152,7 +153,7 @@ export async function startChat() {
     left: 0,
     width: '100%',
     height: 3,
-    content: 'DiscordCLI (• Live) / Chat with Discord',
+    content: 'DiscordCLI (• Live) / DM',
     tags: true,
     style: {
       bg: 'black',
@@ -166,7 +167,7 @@ export async function startChat() {
     right: 0,
     width: 15,
     height: 1,
-    content: '{green-fg}Threads{/green-fg}',
+    content: '{green-fg}DM\'s{/green-fg}',
     tags: true
   });
 
@@ -175,12 +176,20 @@ export async function startChat() {
     left: 0,
     width: '100%',
     height: '100%-3',
-    keys: true,
-    vi: true,
+    keys: false,
+    vi: false,
     mouse: true,
+    tags: true,
+    invertSelected: false,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: {
+      ch: ' ',
+      inverse: true
+    },
     style: {
       selected: {
-        bg: 'blue',
+        bg: 'black',
         fg: 'white'
       },
       item: {
@@ -270,11 +279,11 @@ export async function startChat() {
     try {
       let content = '';
       for (const msg of messages) {
-        const time = new Date(msg.timestamp).toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+        const time = new Date(msg.timestamp).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
         });
-        
+
         let messageContent = '';
         if (msg.isImage) {
           const fileUrl = messageFiles.get(msg.messageId);
@@ -308,10 +317,10 @@ export async function startChat() {
         const isSystemMessage = msg.username === 'System';
         const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (msg.isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${msg.username}{/cyan-fg}`);
         const idInfo = (msg.messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${msg.messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
-        
+
         content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
       }
-      
+
       messageList.setContent(content);
       messageList.setScrollPerc(100);
       screen.render();
@@ -320,15 +329,20 @@ export async function startChat() {
     }
   }
 
-  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null, fileName = null) {
+  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null, fileName = null, isSticker = false, stickerName = null) {
     try {
-      const time = new Date(timestamp).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      const time = new Date(timestamp).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
       });
-      
+
       let messageContent = '';
-      if (isImage && fileName) {
+      if (isSticker) {
+        messageContent = `{blue-fg}[Sticker: {yellow-fg}${stickerName || 'Unknown'}{/yellow-fg}]{/blue-fg}`;
+        if (imageUrl) {
+          messageFiles.set(messageId, { url: imageUrl, fileName: `Sticker_${stickerName || 'Unknown'}.png` });
+        }
+      } else if (isImage && fileName) {
         messageContent = `{blue-fg}[File: {/blue-fg}{yellow-fg}${fileName}{/yellow-fg}{blue-fg}]{/blue-fg}`;
         if (imageUrl) {
           messageFiles.set(messageId, { url: imageUrl, fileName: fileName });
@@ -357,25 +371,25 @@ export async function startChat() {
       const isSystemMessage = username === 'System';
       const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${username}{/cyan-fg}`);
       const idInfo = (messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
-      
+
       const message = `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
-      
-      const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId, replyTo, fileName };
-      
+
+      const msgObj = { username, content: isSticker ? `[Sticker: ${stickerName}]` : (content || ''), timestamp, isImage, isOwn, messageId, replyTo, fileName };
+
       // Check if message already exists to prevent duplicates
       if (messageId && messageMap.has(messageId)) {
         return;
       }
-      
+
       messages.push(msgObj);
-      
+
       if (messageId) {
         messageMap.set(messageId, msgObj);
       }
-      
+
       const currentContent = messageList.getContent() || '';
       messageList.setContent(currentContent + message);
-      
+
       messageList.setScrollPerc(100);
       screen.render();
     } catch (error) {
@@ -400,7 +414,17 @@ export async function startChat() {
         const hasImage = msg.attachments && msg.attachments.size > 0;
         const isOwn = msg.author.id === client.user.id;
         const replyTo = msg.reference?.messageId || null;
-        
+
+        const hasSticker = msg.stickers && msg.stickers.size > 0;
+        let stickerUrl = null;
+        let stickerName = null;
+
+        if (hasSticker) {
+          const sticker = msg.stickers.first();
+          stickerUrl = sticker.url || sticker.format === 1 ? `https://media.discordapp.net/stickers/${sticker.id}.png` : null;
+          stickerName = sticker.name || 'Unknown Sticker';
+        }
+
         let imageUrl = null;
         let fileName = null;
         if (hasImage) {
@@ -408,17 +432,26 @@ export async function startChat() {
           imageUrl = attachment?.url || null;
           fileName = attachment?.name || null;
         }
-        
+
+        let content = msg.content || '';
+
+        // Handle system messages if content is empty
+        if (!content && !hasSticker && msg.type !== 'DEFAULT' && msg.type !== 'REPLY') {
+          content = getSystemMessageEventText(msg);
+        }
+
         addMessage(
-          msg.author.username,
-          msg.content || '',
+          formatAuthor(msg.author),
+          content,
           msg.createdTimestamp,
           hasImage,
           isOwn,
           msg.id,
           replyTo,
-          imageUrl,
-          fileName
+          hasSticker ? stickerUrl : imageUrl,
+          fileName,
+          hasSticker,
+          stickerName
         );
       }
     } catch (error) {
@@ -426,8 +459,87 @@ export async function startChat() {
     }
   }
 
-  function updateThreadList() {
-    const items = channels.map((ch) => {
+  function formatAuthor(user) {
+    if (!user) return 'Unknown';
+
+    // Try to get global name from various possible properties
+    const globalName = user.globalName || user.global_name || user.displayName;
+    const username = user.username;
+
+    // If we have a display name that is different from username, show both
+    if (globalName && globalName !== username) {
+      return `${globalName} (${username})`;
+    }
+    return username;
+  }
+
+  function getSystemMessageEventText(msg) {
+    switch (msg.type) {
+      case 'RECIPIENT_ADD':
+      case 1:
+        return 'Added a recipient.';
+      case 'RECIPIENT_REMOVE':
+      case 2:
+        return 'Removed a recipient.';
+      case 'CALL':
+      case 3:
+        return 'Started a call.';
+      case 'CHANNEL_NAME_CHANGE':
+      case 4:
+        return 'Changed the channel name.';
+      case 'CHANNEL_ICON_CHANGE':
+      case 5:
+        return 'Changed the channel icon.';
+      case 'CHANNEL_PINNED_MESSAGE':
+      case 6:
+        return 'Pinned a message.';
+      case 'USER_JOIN':
+      case 7:
+        return 'Joined the server.';
+      case 'GUILD_BOOST':
+      case 8:
+        return 'Boosted the server.';
+      case 'GUILD_BOOST_TIER_1':
+      case 9:
+        return 'Boosted the server to Level 1.';
+      case 'GUILD_BOOST_TIER_2':
+      case 10:
+        return 'Boosted the server to Level 2.';
+      case 'GUILD_BOOST_TIER_3':
+      case 11:
+        return 'Boosted the server to Level 3.';
+      case 'CHANNEL_FOLLOW_ADD':
+      case 12:
+        return 'Followed a channel.';
+      case 'THREAD_CREATED':
+      case 18:
+        return 'Created a thread.';
+      case 'THREAD_STARTER_MESSAGE':
+      case 21:
+        return 'Started a thread.';
+      case 'CONTEXT_MENU_COMMAND':
+      case 23:
+        return 'Used a context menu command.';
+      case 'AUTO_MODERATION_ACTION':
+      case 24:
+        return 'Auto Moderation action.';
+      default:
+        // Try to handle numeric types if string types fail (Discord.js versions differ)
+        if (msg.type === 3) return 'Started a call.';
+        if (msg.type === 6) return 'Pinned a message.';
+        return '';
+    }
+  }
+
+  function updateThreadList(selectedIndexOverride = null) {
+    const currentSelected = selectedIndexOverride !== null ? selectedIndexOverride : (threadList.selected >= 0 ? threadList.selected : 0);
+    const targetIdx = currentSelected < channels.length ? currentSelected : 0;
+
+    // Build items with '>' prefix for selected item
+    const items = channels.map((ch, idx) => {
+      // Create yellow cursor for selected item
+      const prefix = idx === targetIdx ? '{yellow-fg}>{/yellow-fg} ' : '  ';
+
       let preview = '';
       try {
         const lastMsg = ch.channel.lastMessage;
@@ -438,23 +550,84 @@ export async function startChat() {
       } catch (e) {
         preview = '';
       }
-      
-      return `${ch.name}${preview ? ' | ' + preview : ''}`;
+
+      // Combine prefix, name and preview
+      const channelId = ch.channel.id;
+      const unreadCount = unreadCounts.get(channelId) || 0;
+      const unreadStr = unreadCount > 0 ? ` {red-fg}(${unreadCount} New){/red-fg}` : '';
+
+      return `${prefix}${ch.name}${preview ? ' | ' + preview : ''}${unreadStr}`;
     });
-    
+
+    // Update items directly to preserve scroll state
     threadList.setItems(items);
-    threadList.select(selectedIndex);
+
+    if (items.length > 0) {
+      if (targetIdx >= 0 && targetIdx < items.length) {
+        threadList.select(targetIdx);
+        // Ensure the selected item is visible (autoscroll)
+        threadList.scrollTo(targetIdx);
+      }
+    }
+
     screen.render();
+
+    // Manually move cursor to the end of the selected item's text
+    if (items.length > 0 && targetIdx >= 0 && targetIdx < items.length) {
+      // Get scroll offset (childBase)
+      const scrollOffset = threadList.childBase || 0;
+      const visibleIndex = targetIdx - scrollOffset;
+
+      // Calculate row relative to screen (top + visible index)
+      // Check if item is within visible area
+      if (visibleIndex >= 0 && visibleIndex < threadList.height) {
+        const row = (threadList.top || 0) + visibleIndex;
+
+        // Calculate col based on stripped text length
+        const rawText = items[targetIdx];
+        // Simple regex to strip tags like {yellow-fg} and {/yellow-fg}
+        const cleanText = rawText.replace(/\{[^}]+\}/g, '');
+        const col = (threadList.left || 0) + cleanText.length;
+
+        screen.program.cup(row, col);
+        screen.program.showCursor();
+      }
+    }
   }
+
+  // Manual navigation to prevent skipping and ensure smooth scrolling
+  threadList.on('keypress', (ch, key) => {
+    if (key.name === 'down' || key.name === 'j') {
+      if (threadList.selected < threadList.items.length - 1) {
+        updateThreadList(threadList.selected + 1);
+      }
+      return false;
+    } else if (key.name === 'up' || key.name === 'k') {
+      if (threadList.selected > 0) {
+        updateThreadList(threadList.selected - 1);
+      }
+      return false;
+    } else if (key.name === 'enter') {
+      const selectedIndex = threadList.selected;
+      const selectedItem = threadList.items[selectedIndex];
+      threadList.emit('select', selectedItem, selectedIndex);
+      return false;
+    }
+  });
 
   threadList.on('select', async (item, index) => {
     selectedIndex = index;
     const selectedChannel = channels[index];
     if (selectedChannel) {
       currentChannel = selectedChannel.channel;
+
+      // Clear unread count for this channel
+      unreadCounts.set(currentChannel.id, 0);
+      updateThreadList();
+
       const channelName = selectedChannel.name;
       header.setContent(`DiscordCLI (• Live) / Chat with ${client.user.username} | ${channelName}`);
-      
+
       await loadChannelMessages(currentChannel);
       switchMode('chat');
     }
@@ -463,71 +636,69 @@ export async function startChat() {
   client.once('ready', async () => {
     const statusText = `DiscordCLI (• Live) / Chat with ${client.user.username}`;
     header.setContent(statusText);
-    
+
     switchMode('threads');
 
     channels = [];
-    
+
     try {
       const allChannels = client.channels.cache;
-      
+
       for (const channel of allChannels.values()) {
         try {
           const channelType = channel.type;
           const constructorName = channel.constructor?.name || '';
           const hasGuild = !!channel.guild;
-          const hasRecipient = !!(channel.recipient || (channel.recipients && channel.recipients.first()));
-          
-          if (channelType === 0 || 
-              channelType === 'GUILD_TEXT' || 
-              channelType === 'text' ||
-              constructorName === 'TextChannel' ||
-              (hasGuild && !hasRecipient && channel.name)) {
-            const guild = channel.guild;
-            const guildName = guild ? guild.name : 'Unknown';
-            const channelName = channel.name || 'Unnamed';
-            
-            channels.push({ 
-              channel, 
-              name: `${guildName} > ${channelName}`, 
-              type: 'guild' 
+          const hasRecipients = !!(channel.recipients && channel.recipients.size > 0);
+          const hasRecipient = !!channel.recipient;
+
+          // Check for Group DM first (multiple recipients)
+          if (channelType === 3 ||
+            channelType === 'GROUP_DM' ||
+            channelType === 'group' ||
+            constructorName === 'GroupDMChannel' ||
+            (hasRecipients && channel.recipients.size > 1)) {
+            // Try to get the actual group name, fallback to listing members
+            let groupName = channel.name;
+            if (!groupName && channel.recipients) {
+              // If no group name set, create from member names
+              const memberNames = channel.recipients.map(r => r.username).slice(0, 3);
+              groupName = memberNames.join(', ');
+              if (channel.recipients.size > 3) groupName += '...';
+            }
+            groupName = groupName || 'Group DM';
+
+            channels.push({
+              channel,
+              name: `{blue-fg}Grup{/blue-fg}: ${groupName}`,
+              type: 'group'
             });
           }
-          else if (channelType === 1 || 
-                   channelType === 'DM' || 
-                   channelType === 'dm' ||
-                   constructorName === 'DMChannel' ||
-                   (hasRecipient && !hasGuild)) {
+          // Single DM (one recipient)
+          else if (channelType === 1 ||
+            channelType === 'DM' ||
+            channelType === 'dm' ||
+            constructorName === 'DMChannel' ||
+            (hasRecipient && !hasGuild)) {
             let recipientName = 'Unknown';
             const recipient = channel.recipient || (channel.recipients && channel.recipients.first());
             if (recipient) {
               recipientName = recipient.username || recipient.tag || recipient.toString();
             }
-            
-            channels.push({ 
-              channel, 
-              name: `DM: ${recipientName}`, 
-              type: 'dm' 
-            });
-          }
-          else if (channelType === 3 || 
-                   channelType === 'GROUP_DM' || 
-                   channelType === 'group' ||
-                   constructorName === 'GroupDMChannel') {
-            const groupName = channel.name || 'Group DM';
-            channels.push({ 
-              channel, 
-              name: `DM: ${groupName}`, 
-              type: 'dm' 
+
+            channels.push({
+              channel,
+              name: recipientName,
+              type: 'dm'
             });
           }
         } catch (error) {
           // Kanal işlenemezse devam et
         }
       }
-      
+
       updateThreadList();
-      
+
     } catch (error) {
       // Hata durumunda
     }
@@ -535,17 +706,45 @@ export async function startChat() {
 
   client.on('messageCreate', (message) => {
     try {
+      // Increment notification for messages from others
+      if (message.author.id !== client.user.id) {
+        const channelId = message.channel.id;
+        const currentCount = unreadCounts.get(channelId) || 0;
+
+        // Only increment if we are NOT currently looking at this channel in chat mode
+        const isCurrentChannel = currentChannel && currentChannel.id === channelId && mode === 'chat';
+
+        if (!isCurrentChannel) {
+          unreadCounts.set(channelId, currentCount + 1);
+
+          if (mode === 'threads') {
+            updateThreadList();
+          }
+        }
+      }
+
       if (currentChannel && message.channel.id === currentChannel.id && mode === 'chat') {
         const isOwnMessage = message.author.id === client.user.id;
-        
+
         // Skip if we've already added this message manually
         if (messageMap.has(message.id) || (isOwnMessage && sentMessageIds.has(message.id))) {
           return;
         }
-        
+
+        // Check for stickers
+        const hasSticker = message.stickers && message.stickers.size > 0;
+        let stickerUrl = null;
+        let stickerName = null;
+
+        if (hasSticker) {
+          const sticker = message.stickers.first();
+          stickerUrl = sticker.url || (sticker.format === 1 ? `https://media.discordapp.net/stickers/${sticker.id}.png` : null);
+          stickerName = sticker.name || 'Unknown Sticker';
+        }
+
         const hasImage = message.attachments && message.attachments.size > 0;
         const replyTo = message.reference?.messageId || null;
-        
+
         let imageUrl = null;
         let fileName = null;
         if (hasImage) {
@@ -553,19 +752,28 @@ export async function startChat() {
           imageUrl = attachment?.url || null;
           fileName = attachment?.name || null;
         }
-        
+
+        let content = message.content || '';
+
+        // Handle system messages if content is empty
+        if (!content && !hasSticker && message.type !== 'DEFAULT' && message.type !== 'REPLY') {
+          content = getSystemMessageEventText(message);
+        }
+
         addMessage(
-          message.author.username,
-          message.content || '',
+          formatAuthor(message.author),
+          content,
           message.createdTimestamp,
           hasImage,
           isOwnMessage,
           message.id,
           replyTo,
-          imageUrl,
-          fileName
+          hasSticker ? stickerUrl : imageUrl,
+          fileName,
+          hasSticker,
+          stickerName
         );
-        
+
         setImmediate(() => {
           messageList.setScrollPerc(100);
           screen.render();
@@ -594,7 +802,14 @@ export async function startChat() {
       if (currentChannel && newMessage.channel.id === currentChannel.id && mode === 'chat') {
         if (newMessage.id && messageMap.has(newMessage.id)) {
           const msgObj = messageMap.get(newMessage.id);
-          msgObj.content = newMessage.content || '';
+          let content = newMessage.content || '';
+
+          // Handle system messages if content is empty
+          if (!content && newMessage.type !== 'DEFAULT' && newMessage.type !== 'REPLY') {
+            content = getSystemMessageEventText(newMessage);
+          }
+
+          msgObj.content = content;
           renderAllMessages();
         }
       }
@@ -605,9 +820,9 @@ export async function startChat() {
 
   input.on('submit', async (value) => {
     const trimmedValue = (value || '').trim();
-    
+
     input.clearValue();
-    
+
     if (!trimmedValue || !currentChannel || mode !== 'chat') {
       input.focus();
       screen.render();
@@ -618,23 +833,23 @@ export async function startChat() {
       if (trimmedValue.startsWith('/')) {
         const parts = trimmedValue.split(' ');
         const command = parts[0].substring(1).toLowerCase();
-        
+
         if (command === 'upload' && parts.length >= 2) {
           const filePath = parts.slice(1).join(' ').trim().replace(/^["']|["']$/g, '');
-          
+
           if (!existsSync(filePath)) {
             addMessage('System', `File not found: ${filePath}`, Date.now());
           } else {
             try {
               addMessage('System', 'Uploading file...', Date.now());
-              
+
               const sentMessage = await currentChannel.send({
                 files: [{
                   attachment: filePath,
                   name: basename(filePath)
                 }]
               });
-              
+
               sentMessageIds.add(sentMessage.id);
               const hasImage = sentMessage.attachments && sentMessage.attachments.size > 0;
               let imageUrl = null;
@@ -644,7 +859,7 @@ export async function startChat() {
                 imageUrl = attachment?.url || null;
                 fileName = attachment?.name || null;
               }
-              
+
               addMessage(client.user.username, '', sentMessage.createdTimestamp, hasImage, true, sentMessage.id, null, imageUrl, fileName);
             } catch (error) {
               addMessage('System', `Error uploading file: ${error.message}`, Date.now());
@@ -656,7 +871,7 @@ export async function startChat() {
         }
         else if (command === 'view' && parts.length >= 2) {
           const shortId = parts[1];
-          
+
           let foundFileInfo = null;
           for (const [msgId, fileInfo] of messageFiles.entries()) {
             if (msgId.startsWith(shortId)) {
@@ -664,7 +879,7 @@ export async function startChat() {
               break;
             }
           }
-          
+
           if (foundFileInfo) {
             const fileUrl = typeof foundFileInfo === 'string' ? foundFileInfo : foundFileInfo.url;
             const fileName = typeof foundFileInfo === 'object' ? foundFileInfo.fileName : null;
@@ -680,12 +895,12 @@ export async function startChat() {
         else if (command === 'reply' && parts.length >= 3) {
           const replyToId = parts[1];
           const replyContent = parts.slice(2).join(' ');
-          
+
           const sentMessage = await currentChannel.send({
             content: replyContent,
             reply: { messageReference: replyToId }
           });
-          
+
           sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
@@ -696,12 +911,12 @@ export async function startChat() {
         else if (command === 'r' && parts.length >= 3) {
           const replyToId = parts[1];
           const replyContent = parts.slice(2).join(' ');
-          
+
           const sentMessage = await currentChannel.send({
             content: replyContent,
             reply: { messageReference: replyToId }
           });
-          
+
           sentMessageIds.add(sentMessage.id);
           addMessage(client.user.username, replyContent, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToId);
           replyToMessageId = null;
@@ -711,10 +926,10 @@ export async function startChat() {
         }
         else if (command === 'delete' && parts.length >= 2) {
           const messageId = parts[1];
-          
+
           try {
             const message = await currentChannel.messages.fetch(messageId);
-            
+
             if (message.author.id === client.user.id) {
               await message.delete();
               addMessage('System', `Message deleted: ${messageId}`, Date.now());
@@ -735,14 +950,14 @@ export async function startChat() {
         else if (command === 'edit' && parts.length >= 3) {
           const messageId = parts[1];
           const newContent = parts.slice(2).join(' ');
-          
+
           try {
             const message = await currentChannel.messages.fetch(messageId);
-            
+
             if (message.author.id === client.user.id) {
               await message.edit(newContent);
               addMessage('System', `Message edited: ${messageId}`, Date.now());
-              
+
               if (messageMap.has(messageId)) {
                 const msgObj = messageMap.get(messageId);
                 msgObj.content = newContent;
@@ -762,15 +977,42 @@ export async function startChat() {
         else if (command === 'edit') {
           addMessage('System', 'Usage: /edit <message_id> <new_message>', Date.now());
         }
+        else if (command === 'pin' && parts.length >= 2) {
+          const messageId = parts[1];
+          try {
+            const message = await currentChannel.messages.fetch(messageId);
+            await message.pin();
+            addMessage('System', `Message pinned: ${messageId}`, Date.now());
+          } catch (error) {
+            addMessage('System', `Error pinning message: ${error.message}`, Date.now());
+          }
+        }
+        else if (command === 'pin') {
+          addMessage('System', 'Usage: /pin <message_id>', Date.now());
+        }
+        else if (command === 'react' && parts.length >= 3) {
+          const messageId = parts[1];
+          const emoji = parts[2];
+          try {
+            const message = await currentChannel.messages.fetch(messageId);
+            await message.react(emoji);
+            addMessage('System', `Reacted to message ${messageId} with ${emoji}`, Date.now());
+          } catch (error) {
+            addMessage('System', `Error reacting to message: ${error.message}`, Date.now());
+          }
+        }
+        else if (command === 'react') {
+          addMessage('System', 'Usage: /react <message_id> <emoji>', Date.now());
+        }
         else if (command === 'help') {
-          addMessage('System', 'Commands:\n- /upload <file_path>: Upload file\n- /view <message_id>: Open file in browser\n- /reply <message_id> <message>: Reply to message\n- /r <message_id> <message>: Reply to message (short)\n- /delete <message_id>: Delete message\n- /edit <message_id> <new_message>: Edit message', Date.now());
+          addMessage('System', 'Commands:\n- /upload <file_path>: Upload file\n- /view <message_id>: Open file/sticker in browser\n- /reply <message_id> <message>: Reply to message\n- /r <message_id> <message>: Reply to message (short)\n- /delete <message_id>: Delete message\n- /edit <message_id> <new_message>: Edit message\n- /pin <message_id>: Pin message\n- /react <message_id> <emoji>: React to message', Date.now());
         }
         else {
           addMessage('System', `Unknown command: ${command}. Use /help for help.`, Date.now());
         }
       } else {
         const sentMessage = await currentChannel.send(trimmedValue);
-        
+
         // Mark as sent to prevent duplicate from messageCreate event
         sentMessageIds.add(sentMessage.id);
         addMessage(client.user.username, trimmedValue, sentMessage.createdTimestamp, false, true, sentMessage.id, replyToMessageId);
@@ -779,7 +1021,7 @@ export async function startChat() {
     } catch (error) {
       addMessage('System', `Error: ${error.message}`, Date.now());
     }
-    
+
     setImmediate(() => {
       messageList.setScrollPerc(100);
       input.focus();

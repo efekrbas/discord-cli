@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "chat": "node index.js chat"
+    "dm": "node index.js dm"
   },
   "keywords": [
     "discord",
@@ -27,4 +27,3 @@
     "dotenv": "^16.3.1"
   }
 }
-
