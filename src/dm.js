@@ -464,13 +464,9 @@ export async function startChat(selectedToken = null) {
 
     // Try to get global name from various possible properties
     const globalName = user.globalName || user.global_name || user.displayName;
-    const username = user.username;
 
-    // If we have a display name that is different from username, show both
-    if (globalName && globalName !== username) {
-      return `${globalName} (${username})`;
-    }
-    return username;
+    // Return visible name if available, otherwise username
+    return globalName || user.username;
   }
 
   function getSystemMessageEventText(msg) {
@@ -662,7 +658,7 @@ export async function startChat(selectedToken = null) {
             let groupName = channel.name;
             if (!groupName && channel.recipients) {
               // If no group name set, create from member names
-              const memberNames = channel.recipients.map(r => r.username).slice(0, 3);
+              const memberNames = channel.recipients.map(r => formatAuthor(r)).slice(0, 3);
               groupName = memberNames.join(', ');
               if (channel.recipients.size > 3) groupName += '...';
             }
@@ -683,7 +679,7 @@ export async function startChat(selectedToken = null) {
             let recipientName = 'Unknown';
             const recipient = channel.recipient || (channel.recipients && channel.recipients.first());
             if (recipient) {
-              recipientName = recipient.username || recipient.tag || recipient.toString();
+              recipientName = formatAuthor(recipient);
             }
 
             channels.push({
