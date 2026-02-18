@@ -259,35 +259,150 @@ export async function startServer(selectedToken = null) {
     messageList.hide();
     input.hide();
 
+
+    // Generalized Cleanup: Always wipe list and chat content before switching
+    // This ensures no artifacts remain from the previous view
+    messageList.setContent('');
+    list.setItems([]);
+
+    // Force a render to physically clear the screen of these elements
+    // This is safer than screen.clear() as it uses blessed's internal logic
+    screen.render();
+
     mode = newMode;
     if (mode === 'guilds') {
       // Clear content to prevent rendering artifacts
       messageList.setContent('');
+      messageList.setScrollPerc(0);
       input.setValue('');
 
       header.setContent('DiscordCLI (• Live) / Server Browser');
 
       list.show();
+      list.setFront(); // Ensure list is on top
       list.focus();
       helpText.setContent('j/k: navigate, Enter: select, Esc: quit');
     } else if (mode === 'channels') {
       // Clear content to prevent rendering artifacts
       messageList.setContent('');
+      messageList.setScrollPerc(0);
       input.setValue('');
 
-      header.setContent(`DiscordCLI (• Live) / Server Browser | ${currentGuild ? currentGuild.name : 'Unknown'}`);
+      header.setContent(
+        `DiscordCLI (• Live) / Server Browser | ${currentGuild ? currentGuild.name : 'Unknown'
+        }${currentChannel ? ` > ${currentChannel.name}` : ''}`
+      );
 
       list.show();
+      list.setFront(); // Ensure list is on top
       list.focus();
       helpText.setContent('j/k: navigate, Enter: select, Esc: back');
     } else if (mode === 'chat') {
       list.hide();
       messageList.show();
+      messageList.setFront(); // Ensure chat is on top
       input.show();
+      input.setFront(); // Ensure input is on top
       input.focus();
       helpText.setContent('Esc: back, Ctrl+D: clear input, /upload <path>: upload file, /view <id>: open file, /reply <id> <msg>: reply, /edit <id> <msg>: edit, /delete <id>: delete, /help: commands');
     }
     screen.render();
+  }
+
+  function formatMessageContent(message) {
+    let content = message.content || '';
+
+    // Handle System Messages
+    // Note: discord.js-selfbot-v13 usually returns types as strings
+    switch (message.type) {
+      case 'GUILD_MEMBER_JOIN':
+        return '{green-fg}→ Sunucuya katıldı.{/green-fg}';
+      case 'USER_PREMIUM_GUILD_SUBSCRIPTION':
+      case 'USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_1':
+      case 'USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_2':
+      case 'USER_PREMIUM_GUILD_SUBSCRIPTION_TIER_3':
+        return '{magenta-fg}★ Sunucuya takviye yaptı!{/magenta-fg}';
+      case 'CHANNEL_PINNED_MESSAGE':
+        return '{gray-fg}📌 Bir mesaj sabitledi.{/gray-fg}';
+      case 'CALL':
+        return '{cyan-fg}📞 Bir arama başlattı.{/cyan-fg}';
+      case 'CHANNEL_NAME_CHANGE':
+        return '{gray-fg}✏️ Kanal adını değiştirdi.{/gray-fg}';
+      case 'RECIPIENT_ADD':
+        return '{green-fg}→ Gruba birini ekledi.{/green-fg}';
+      case 'RECIPIENT_REMOVE':
+        return '{red-fg}← Gruptan birini çıkardı.{/red-fg}';
+    }
+
+    // Clean user content first (escapes braces, preserves mentions)
+    content = cleanMessageContent(content);
+
+    // Resolve User Mentions (<@ID> or <@!ID>)
+    content = content.replace(/<@!?(\d+)>/g, (match, id) => {
+      const user = client.users.cache.get(id);
+      const member = currentGuild ? currentGuild.members.cache.get(id) : null;
+      const name = member ? member.displayName : (user ? user.username : 'Unknown User');
+      return `@{cyan-fg}${name}{/cyan-fg}`;
+    });
+
+    // Resolve Channel Mentions (<#ID>)
+    content = content.replace(/<#(\d+)>/g, (match, id) => {
+      const channel = currentGuild ? currentGuild.channels.cache.get(id) : null;
+      const chStruct = channel || client.channels.cache.get(id);
+      const name = chStruct ? chStruct.name : 'deleted-channel';
+      return `#{blue-fg}${name}{/blue-fg}`;
+    });
+
+    // Resolve Role Mentions (<@&ID>)
+    content = content.replace(/<@&(\d+)>/g, (match, id) => {
+      const role = currentGuild ? currentGuild.roles.cache.get(id) : null;
+      const name = role ? role.name : 'deleted-role';
+      return `@{magenta-fg}${name}{/magenta-fg}`;
+    });
+
+    // Resolve Custom Emojis (<:name:ID>)
+    content = content.replace(/<:(\w+):(\d+)>/g, (match, name, id) => {
+      return `:${name}:`;
+    });
+
+    // Resolve Animated Emojis (<a:name:ID>)
+    content = content.replace(/<a:(\w+):(\d+)>/g, (match, name, id) => {
+      return `:${name}:`;
+    });
+
+    // Handle Interactions (Slash Commands)
+    if (message.interaction) {
+      content = `{cyan-fg}Used /${message.interaction.commandName}{/cyan-fg}\n` + content;
+    }
+
+    // Handle Stickers
+    if (message.stickers && message.stickers.size > 0) {
+      const sticker = message.stickers.first();
+      content += `\n{blue-fg}[Sticker: ${sticker.name}]{/blue-fg}`;
+    }
+
+    // Handle Embeds with better formatting
+    if (message.embeds && message.embeds.length > 0) {
+      for (const embed of message.embeds) {
+        if (embed.title) {
+          content += (content ? '\n' : '') + `{yellow-fg}${cleanMessageContent(embed.title)}{/yellow-fg}`;
+        }
+        if (embed.description) {
+          content += (content ? '\n' : '') + cleanMessageContent(embed.description);
+        }
+        if (embed.fields && embed.fields.length > 0) {
+          for (const field of embed.fields) {
+            content += (content ? '\n' : '') + `{cyan-fg}${cleanMessageContent(field.name)}:{/cyan-fg} `;
+            content += cleanMessageContent(field.value);
+          }
+        }
+        if (embed.footer && embed.footer.text) {
+          content += (content ? '\n' : '') + `{gray-fg}${cleanMessageContent(embed.footer.text)}{/gray-fg}`;
+        }
+      }
+    }
+
+    return content;
   }
 
   function cleanMessageContent(text) {
@@ -304,27 +419,41 @@ export async function startServer(selectedToken = null) {
       .replace(/&nbsp;/g, ' ');
 
     // Remove markdown formatting and Discord-specific formatting
+    // We want to keep SOME formatting now for embeds/system messages if we added colors manually
+    // So we match standard markdown but ignore {color-fg} tags we just added
+
+    // Simple approach: Render functions added {color-fg} tags. 
+    // cleanMessageContent strips markdown. 
+    // We need to be careful not to strip the tags we just added.
+    // The current cleanMessageContent doesn't strip {tags}, only specific markdown like ** **.
+    // However, it does this: cleaned = cleaned.replace(/[\x00-\x08...]/g, ''); which is fine.
+
+    // Let's refine the specific markdown replacements to avoid breaking our new look, 
+    // but the previous regexes look mostly safe for {tags}. 
+
     cleaned = cleaned
       .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold **text**
       .replace(/\*(.*?)\*/g, '$1') // Remove italic *text*
       .replace(/__(.*?)__/g, '$1') // Remove underline __text__
       .replace(/~~(.*?)~~/g, '$1') // Remove strikethrough ~~text~~
       .replace(/`([^`]*)`/g, '$1') // Remove inline code `code`
-      .replace(/```[\s\S]*?```/g, '[Code Block]') // Replace code blocks
-      .replace(/^> /gm, '') // Remove quote markers at line start
-      .replace(/^#{1,6} /gm, '') // Remove heading markers (#, ##, etc.)
-      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove markdown links, keep text
-      .replace(/<@!?\d+>/g, '') // Remove user mentions
-      .replace(/<#\d+>/g, '') // Remove channel mentions
-      .replace(/<@&\d+>/g, '') // Remove role mentions
-      .replace(/<:[^:]+:\d+>/g, '') // Remove custom emoji
-      .replace(/<a:[^:]+:\d+>/g, '') // Remove animated emoji
-      .replace(/<@!?&?\d+>/g, ''); // Remove any remaining mentions
+      // .replace(/```[\s\S]*?```/g, '[Code Block]') // Keep code blocks content? -> previous logic replaced it.
+      // Let's keep the replacement for now to safe space.
+      .replace(/```[\s\S]*?```/g, '[Code Block]')
+      .replace(/^> /gm, '') // Remove quote markers
+      .replace(/^#{1,6} /gm, '') // Remove heading markers
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1'); // Remove markdown links
+    // .replace(/<@!?\d+>/g, '') // Remove user mentions
+    // .replace(/<#\d+>/g, '') // Remove channel mentions
+    // .replace(/<@&\d+>/g, '') // Remove role mentions
+    // .replace(/<:[^:]+:\d+>/g, '') // Remove custom emoji
+    // .replace(/<a:[^:]+:\d+>/g, '') // Remove animated emoji
+    // .replace(/<@!?&?\d+>/g, ''); // Remove any remaining mentions
 
-    // Replace multiple newlines with single newline, limit to prevent render issues
+    // Escape brace characters to prevent blessed style bleeding from USER input
+    cleaned = cleaned.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-
-    // Remove any control characters that might cause rendering issues (except newline and tab)
     cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]/g, '');
 
     return cleaned.trim();
@@ -332,6 +461,9 @@ export async function startServer(selectedToken = null) {
 
   function renderAllMessages() {
     try {
+      // Safety: If messageList is hidden and we are not forcing a load (hard to check), abort?
+      // But switchMode logic handles setFront to mask issues.
+
       let content = '';
       for (const msg of messages) {
         const time = new Date(msg.timestamp).toLocaleTimeString('en-US', {
@@ -349,10 +481,9 @@ export async function startServer(selectedToken = null) {
           } else {
             messageContent = `{blue-fg}[File]{/blue-fg}`;
           }
-        } else if (msg.content && msg.content.trim()) {
-          messageContent = cleanMessageContent(msg.content);
         } else {
-          messageContent = '{gray-fg}(empty message){/gray-fg}';
+          // Content is already formatted/cleaned by formatMessageContent
+          messageContent = msg.content || '{gray-fg}(empty message){/gray-fg}';
         }
 
         if (msg.messageId && deletedMessageIds.has(msg.messageId)) {
@@ -363,8 +494,13 @@ export async function startServer(selectedToken = null) {
         if (msg.replyTo) {
           const repliedMsg = messageMap.get(msg.replyTo);
           if (repliedMsg) {
-            const replyContent = repliedMsg.content ? repliedMsg.content.substring(0, 30) : '[Media]';
-            replyInfo = `{yellow-fg}↪ Replying to ${repliedMsg.username}: ${replyContent}${replyContent.length >= 30 ? '...' : ''}{/yellow-fg}\n`;
+            // repliedMsg.content is already formatted
+            // Strip tags for preview consistency or keep them?
+            // Simple substring might cut a tag in half.
+            // Let's strip tags for the preview part just to be safe.
+            const plainContent = repliedMsg.content.replace(/\{.*?\}/g, '');
+            const replyContent = plainContent.substring(0, 30);
+            replyInfo = `{yellow-fg}↪ Replying to ${repliedMsg.username}: ${replyContent}${plainContent.length >= 30 ? '...' : ''}{/yellow-fg}\n`;
           }
         }
 
@@ -372,56 +508,24 @@ export async function startServer(selectedToken = null) {
         const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (msg.isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${msg.username}{/cyan-fg}`);
         const idInfo = (msg.messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${msg.messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
 
-        content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
+        // Added {/} at end to reset any leaking colors
+        content += `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}{/}\n\n`;
       }
 
       messageList.setContent(content);
       messageList.setScrollPerc(100);
-      screen.render();
+
+      // Only render if messagelist is visible or we are forcing an update
+      if (!messageList.hidden) {
+        screen.render();
+      }
     } catch (error) {
       console.error('renderAllMessages error:', error);
     }
   }
 
-  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null, fileName = null) {
+  function addMessage(username, content, timestamp, isImage = false, isOwn = false, messageId = null, replyTo = null, imageUrl = null, fileName = null, shouldRender = true) {
     try {
-      const time = new Date(timestamp).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      let messageContent = '';
-      if (isImage && fileName) {
-        messageContent = `{blue-fg}[File: {/blue-fg}{yellow-fg}${fileName}{/yellow-fg}{blue-fg}]{/blue-fg}`;
-        if (imageUrl) {
-          messageFiles.set(messageId, { url: imageUrl, fileName: fileName });
-        }
-      } else if (isImage && imageUrl) {
-        messageContent = `{blue-fg}[Image]{/blue-fg}`;
-        messageFiles.set(messageId, { url: imageUrl, fileName: null });
-      } else if (isImage) {
-        messageContent = `{blue-fg}[File]{/blue-fg}`;
-      } else if (content && content.trim()) {
-        messageContent = cleanMessageContent(content);
-      } else {
-        messageContent = '{gray-fg}(empty message){/gray-fg}';
-      }
-
-      let replyInfo = '';
-      if (replyTo) {
-        const repliedMsg = messageMap.get(replyTo);
-        if (repliedMsg) {
-          const replyContent = repliedMsg.content ? repliedMsg.content.substring(0, 30) : '[Media]';
-          replyInfo = `{yellow-fg}↪ Replying to ${repliedMsg.username}: ${replyContent}${replyContent.length >= 30 ? '...' : ''}{/yellow-fg}\n`;
-        }
-      }
-
-      const isSystemMessage = username === 'System';
-      const prefix = isSystemMessage ? '{red-fg}System{/red-fg}' : (isOwn ? '{green-fg}You{/green-fg}' : `{cyan-fg}${username}{/cyan-fg}`);
-      const idInfo = (messageId && !isSystemMessage) ? ` {blue-fg}({/blue-fg}{yellow-fg}${messageId}{/yellow-fg}{blue-fg}){/blue-fg}` : '';
-
-      const message = `${replyInfo}${prefix} [${time}]\n${messageContent}${idInfo}\n\n`;
-
       const msgObj = { username, content: content || '', timestamp, isImage, isOwn, messageId, replyTo, fileName };
 
       if (messageId && messageMap.has(messageId)) {
@@ -432,10 +536,17 @@ export async function startServer(selectedToken = null) {
 
       if (messageId) {
         messageMap.set(messageId, msgObj);
+        if (imageUrl) {
+          messageFiles.set(messageId, { url: imageUrl, fileName: fileName });
+        } else if (isImage && !fileName) {
+          messageFiles.set(messageId, { url: null, fileName: null }); // Placeholder
+        }
       }
 
-      // Use renderAllMessages instead of appending to prevent render issues
-      renderAllMessages();
+      if (shouldRender) {
+        // Use renderAllMessages instead of appending to prevent render issues
+        renderAllMessages();
+      }
     } catch (error) {
       console.error('addMessage error:', error);
     }
@@ -447,9 +558,18 @@ export async function startServer(selectedToken = null) {
       messageMap.clear();
       messageFiles.clear();
       deletedMessageIds.clear();
-      messageList.setContent('');
+
+      // Don't wipe content here, we did it in switchMode/logic before calling this.
+      // But wait, reorder logic means we DO want to see "Loading..."
+      // messageList.setContent(''); // REMOVED THIS to keep "Loading..." visible until renderAllMessages overwrites it.
 
       const fetchedMessages = await channel.messages.fetch({ limit: 50 });
+
+      // RACECONDITION GUARD: If channel changed while fetching, abort
+      if (!currentChannel || currentChannel.id !== channel.id) {
+        return false;
+      }
+
       const sortedMessages = Array.from(fetchedMessages.values()).reverse();
 
       for (const message of sortedMessages) {
@@ -464,30 +584,8 @@ export async function startServer(selectedToken = null) {
           fileName = attachment?.name || null;
         }
 
-        // Handle embed messages
-        let messageContent = message.content || '';
-        if (message.embeds && message.embeds.size > 0) {
-          const embed = message.embeds.first();
-          if (embed.title) {
-            messageContent += (messageContent ? '\n' : '') + embed.title;
-          }
-          if (embed.description) {
-            messageContent += (messageContent ? '\n' : '') + embed.description;
-          }
-          if (embed.fields && embed.fields.length > 0) {
-            for (const field of embed.fields) {
-              if (field.name) {
-                messageContent += (messageContent ? '\n' : '') + field.name + ':';
-              }
-              if (field.value) {
-                messageContent += (messageContent ? '\n' : '') + field.value;
-              }
-            }
-          }
-        }
-
-        // Clean the entire message content
-        messageContent = cleanMessageContent(messageContent);
+        // Use new formatter
+        const messageContent = formatMessageContent(message);
 
         addMessage(
           message.author.username,
@@ -498,9 +596,13 @@ export async function startServer(selectedToken = null) {
           message.id,
           replyTo,
           imageUrl,
-          fileName
+          fileName,
+          false // Don't render for each message load
         );
       }
+
+      // Render once after loading all messages
+      renderAllMessages();
 
       if (sortedMessages.length > 0) {
         const lastMessage = sortedMessages[sortedMessages.length - 1];
@@ -614,6 +716,7 @@ export async function startServer(selectedToken = null) {
       const selectedGuild = guilds[index];
       if (selectedGuild) {
         currentGuild = selectedGuild.guild;
+        currentChannel = null; // Reset channel when switching guilds
         channels = [];
 
         try {
@@ -717,12 +820,22 @@ export async function startServer(selectedToken = null) {
         const channelName = selectedChannel.name.trim();
         header.setContent(`DiscordCLI (• Live) / Server Browser | ${currentGuild.name} > ${channelName}`);
 
+        // Switch to chat mode FIRST to clear screen artifacts
+        switchMode('chat');
+
+        // Show loading indicator
+        messageList.setContent('{center}Loading messages...{/center}');
+        screen.render();
+
         const success = await loadChannelMessages(currentChannel);
-        if (success) {
-          switchMode('chat');
-        } else {
-          // Failed to load messages (e.g., Missing Access), stay in channels mode
-          // Don't switch to chat mode, just stay in channels mode
+        if (!success) {
+          // Failed to load messages (e.g., Missing Access)
+          // Go back to channels list
+          messageList.setContent('{center}{red-fg}Failed to load messages (Missing Access?){/red-fg}{/center}');
+          screen.render();
+          setTimeout(() => {
+            switchMode('channels');
+          }, 1500);
         }
       }
     }
@@ -937,30 +1050,10 @@ export async function startServer(selectedToken = null) {
       if (currentChannel && newMessage.channel.id === currentChannel.id && mode === 'chat') {
         if (newMessage.id && messageMap.has(newMessage.id)) {
           const msgObj = messageMap.get(newMessage.id);
-          let messageContent = newMessage.content || '';
 
-          // Handle embed messages
-          if (newMessage.embeds && newMessage.embeds.size > 0) {
-            const embed = newMessage.embeds.first();
-            if (embed.title) {
-              messageContent += (messageContent ? '\n' : '') + embed.title;
-            }
-            if (embed.description) {
-              messageContent += (messageContent ? '\n' : '') + embed.description;
-            }
-            if (embed.fields && embed.fields.length > 0) {
-              for (const field of embed.fields) {
-                if (field.name) {
-                  messageContent += (messageContent ? '\n' : '') + field.name + ':';
-                }
-                if (field.value) {
-                  messageContent += (messageContent ? '\n' : '') + field.value;
-                }
-              }
-            }
-          }
+          // Use new formatter
+          msgObj.content = formatMessageContent(newMessage);
 
-          msgObj.content = cleanMessageContent(messageContent);
           renderAllMessages();
         }
       }
@@ -989,30 +1082,8 @@ export async function startServer(selectedToken = null) {
           fileName = attachment?.name || null;
         }
 
-        // Handle embed messages
-        let messageContent = message.content || '';
-        if (message.embeds && message.embeds.size > 0) {
-          const embed = message.embeds.first();
-          if (embed.title) {
-            messageContent += (messageContent ? '\n' : '') + embed.title;
-          }
-          if (embed.description) {
-            messageContent += (messageContent ? '\n' : '') + embed.description;
-          }
-          if (embed.fields && embed.fields.length > 0) {
-            for (const field of embed.fields) {
-              if (field.name) {
-                messageContent += (messageContent ? '\n' : '') + field.name + ':';
-              }
-              if (field.value) {
-                messageContent += (messageContent ? '\n' : '') + field.value;
-              }
-            }
-          }
-        }
-
-        // Clean the entire message content
-        messageContent = cleanMessageContent(messageContent);
+        // Use new formatter
+        const messageContent = formatMessageContent(message);
 
         addMessage(
           message.author.username,
