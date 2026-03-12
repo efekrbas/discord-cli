@@ -30,7 +30,7 @@ if (args.length === 0) {
   showLogo();
   console.log(chalk.white(`\n${randomQuote}`));
   console.log(chalk.white("Type 'npm run help' to see available commands."));
-  console.log(chalk.white("Pro Tip: Use vim-motion ('k', 'j') to navigate chats and messages."));
+  console.log(chalk.white("Pro Tip: Use vim-motion ('k', 'j') or Arrow Keys ('Up', 'Down') to navigate chats and messages."));
   process.exit(0);
 }
 
