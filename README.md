@@ -4,7 +4,7 @@ A terminal-based Discord chat interface. Allows you to use Discord directly from
 
 ## Images
 
-<img width="1919" height="1018" alt="image" src="https://github.com/user-attachments/assets/713bf8ff-0239-4252-9edd-f505c34bba60" />
+<img width="1919" height="1016" alt="image" src="https://github.com/user-attachments/assets/7a4ad855-1e10-426a-9021-af5c0d0b9db0" />
 <img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/76d1f1a9-596e-43fc-b40a-73805812d1eb" />
 <img width="1919" height="1015" alt="image" src="https://github.com/user-attachments/assets/45a1e9ff-0812-4e4b-81f6-26ad7f979ab0" />
 <img width="1918" height="882" alt="image" src="https://github.com/user-attachments/assets/dcf3d41e-ecc7-4eee-9952-f37b95a95205" />
