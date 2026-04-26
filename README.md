@@ -2,15 +2,6 @@
 
 A terminal-based Discord chat interface. Allows you to use Discord directly from your terminal, stripped of the bloat.
 
-## Images
-
-<img width="1919" height="1016" alt="image" src="https://github.com/user-attachments/assets/7a4ad855-1e10-426a-9021-af5c0d0b9db0" />
-<img width="1919" height="1079" alt="image" src="https://github.com/user-attachments/assets/76d1f1a9-596e-43fc-b40a-73805812d1eb" />
-<img width="1919" height="1015" alt="image" src="https://github.com/user-attachments/assets/45a1e9ff-0812-4e4b-81f6-26ad7f979ab0" />
-<img width="1918" height="882" alt="image" src="https://github.com/user-attachments/assets/dcf3d41e-ecc7-4eee-9952-f37b95a95205" />
-<img width="1919" height="1078" alt="image" src="https://github.com/user-attachments/assets/78923953-390f-4f86-8d2f-b0ebe176b7cb" />
-<img width="1919" height="1001" alt="image" src="https://github.com/user-attachments/assets/cddff206-4e64-4177-8d97-0d2313e40ba3" />
-
 ## Features
 
 - 🎨 **Modern terminal interface**: Clean and minimal UI.
