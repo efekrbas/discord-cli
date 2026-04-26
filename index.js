@@ -5,6 +5,7 @@ import { startChat } from './src/dm.js';
 import { startServer } from './src/server.js';
 import { startTUI } from './src/tui.js';
 import { showLogo } from './src/logo.js';
+import { getTokenInteractive } from './src/token-grabber.js';
 import chalk from 'chalk';
 
 // Global exit handler to restore terminal cursor
@@ -39,15 +40,22 @@ if (args.length === 0) {
   console.log(chalk.cyan("  server") + chalk.white("   Server browser"));
   console.log(chalk.cyan("  help") + chalk.white("     Show help\n"));
   process.exit(0);
-} else if (args[0] === 'tui') {
-  startTUI();
-} else if (args[0] === 'dm') {
-  startChat();
-} else if (args[0] === 'server') {
-  startServer();
-} else if (args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
-  program.help();
 } else {
-  console.log(chalk.red(`Unknown command: ${args[0]}`));
-  program.help();
+  (async () => {
+    if (args[0] === 'tui') {
+      const token = await getTokenInteractive();
+      startTUI(token);
+    } else if (args[0] === 'dm') {
+      const token = await getTokenInteractive();
+      startChat(token);
+    } else if (args[0] === 'server') {
+      const token = await getTokenInteractive();
+      startServer(token);
+    } else if (args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
+      program.help();
+    } else {
+      console.log(chalk.red(`Unknown command: ${args[0]}`));
+      program.help();
+    }
+  })();
 }
