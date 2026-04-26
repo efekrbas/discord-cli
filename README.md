@@ -6,6 +6,7 @@ A terminal-based Discord chat interface. Allows you to use Discord directly from
 
 - 🎨 **Modern terminal interface**: Clean and minimal UI.
 - 💬 **Real-time messaging**: Chat with zero lag.
+- 🔐 **Automatic Login**: Automatically scans and extracts your Discord accounts from installed clients (Stable, Canary, PTB) and gives you a seamless login prompt.
 - 🚥 **User Presence Status**: View online (🟢), DND (🔴), idle (🟠), and offline (⚪) statuses for friends directly in your DM list.
 - 📦 **Rich Embed Support**: View formatted bot messages and rich embeds right inside your terminal.
 - 🔔 **Real-time notifications**: Stay updated on new messages (per-user/channel).
@@ -27,15 +28,18 @@ A terminal-based Discord chat interface. Allows you to use Discord directly from
 npm install
 ```
 
-3. Setup your environment variables:
+3. You're ready to go! `clicord` will automatically grab your tokens from your active Discord desktop applications (Stable, Canary, PTB) and prompt you to select an account.
+
+### Manual Token Entry (Optional)
+
+If you don't have the Discord desktop app installed or want to use a specific account, you can manually setup a `.env` file:
 - **Windows**: Run `setup_env.bat` to automatically create the `.env` file. Open the created file and paste your token after the `=` sign.
 - **Manual**: Create a `.env` file in the root directory and add your token:
 ```
 DISCORD_USER_TOKEN=your_user_token_here
 ```
 
-### How to Get Your Discord User Token
-
+#### How to Get Your Discord User Token Manually
 - Watch this [tutorial video](https://youtu.be/rcwWex7aqTo) if you don't know how to obtain your user token.
 
 **⚠️ Important Security Notes:**
