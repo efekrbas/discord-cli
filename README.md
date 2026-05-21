@@ -46,20 +46,14 @@ npm link
 
 Once linked, you can use the `clicord` command anywhere in your terminal:
 
-### Show Welcome Screen & Quotes:
+### Start Direct Messages:
 ```bash
-clicord
+clicord dm
 ```
 
-### Start Unified Interface (DMs and Servers):
+### Start Server Browser:
 ```bash
-clicord tui
-```
-
-### Start Standalone Interfaces:
-```bash
-clicord dm         # Direct Messages only
-clicord server     # Server browser only
+clicord server
 ```
 
 ### Show Help / Available Commands:

@@ -3,9 +3,8 @@
 import { program } from './src/cli.js';
 import { startChat } from './src/dm.js';
 import { startServer } from './src/server.js';
-import { startTUI } from './src/tui.js';
 import { showLogo } from './src/logo.js';
-import { getTokenInteractive } from './src/token-grabber.js';
+import { getTokenInteractive } from './src/auth.js';
 import chalk from 'chalk';
 
 // Global exit handler to restore terminal cursor
@@ -35,17 +34,13 @@ if (args.length === 0) {
   showLogo();
   console.log(chalk.white(`\n${randomQuote}`));
   console.log(chalk.white("\nUsage: clicord <command>\n"));
-  console.log(chalk.cyan("  tui") + chalk.white("      Discord TUI interface"));
   console.log(chalk.cyan("  dm") + chalk.white("       Direct messages"));
   console.log(chalk.cyan("  server") + chalk.white("   Server browser"));
   console.log(chalk.cyan("  help") + chalk.white("     Show help\n"));
   process.exit(0);
 } else {
   (async () => {
-    if (args[0] === 'tui') {
-      const token = await getTokenInteractive();
-      startTUI(token);
-    } else if (args[0] === 'dm') {
+    if (args[0] === 'dm') {
       const token = await getTokenInteractive();
       startChat(token);
     } else if (args[0] === 'server') {

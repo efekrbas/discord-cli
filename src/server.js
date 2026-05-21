@@ -1,14 +1,14 @@
 import blessed from 'blessed';
 import { Client } from 'discord.js-selfbot-v13';
 import chalk from 'chalk';
-import dotenv from 'dotenv';
+
 import { exec } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { join, basename } from 'path';
 import { tmpdir } from 'os';
 import { openFileInBrowser } from './utils.js';
 
-dotenv.config();
+
 
 let client = null;
 let currentChannel = null;
@@ -25,10 +25,17 @@ let mode = 'guilds'; // 'guilds', 'channels', 'chat'
 let replyToMessageId = null;
 let channelLastReadMessage = new Map();
 
-// Fix blessed emoji/wide-char width calculation - adds space after wide characters
+// Blessed miscalculates emoji width (treats 2-col chars as 1-col).
+// We add an extra space after each emoji/wide char to compensate.
 function safeEmoji(text) {
   if (!text) return '';
-  return text.replace(/([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{3000}-\u{303F}\u{30A0}-\u{30FF}\u{FF01}-\u{FF60}\u{2300}-\u{23FF}])/gu, '$1 ');
+  return text
+    // Add extra space after emoji/pictographic characters (compensate width)
+    .replace(/(\p{Extended_Pictographic})/gu, '$1 ')
+    // Add extra space after other wide symbol blocks
+    .replace(/([\u2100-\u2BFF\u25A0-\u25FF])/gu, '$1 ')
+    // Clean up cases where padding created triple+ spaces
+    .replace(/ {3,}/g, '  ');
 }
 
 export async function startServer(selectedToken = null) {
@@ -36,7 +43,7 @@ export async function startServer(selectedToken = null) {
 
   const token = selectedToken;
   if (!token) {
-    console.error(chalk.red('HATA: Giriş için geçerli bir token bulunamadı!'));
+    console.error(chalk.red('ERROR: No valid token found for login!'));
     process.exit(1);
   }
 
@@ -181,6 +188,85 @@ export async function startServer(selectedToken = null) {
   container.append(messageList);
   container.append(input);
   container.append(helpText);
+
+  // ── Mention Popup ──────────────────────────────
+  let mentionMode = false, mentionUsers = [], mentionAtIndex = -1;
+  const mentionPopup = blessed.list({
+    bottom: 7, left: 0, width: '25%', height: '40%',
+    label: ' {yellow-fg}Mentions{/yellow-fg} ',
+    tags: true, keys: false, vi: false, mouse: true,
+    border: { type: 'line', fg: '#555555' },
+    invertSelected: false, scrollable: true, alwaysScroll: true, transparent: true,
+    scrollbar: { ch: '│', style: { fg: '#555555' } },
+    style: {
+      fg: '#cccccc',
+      selected: { bg: '#0f3460', fg: '#00ff00', bold: true },
+      item: { fg: '#cccccc' },
+      border: { fg: '#444444' }, label: { fg: 'yellow' }
+    },
+    hidden: true
+  });
+  screen.append(mentionPopup);
+
+  function showMentionPopup(query) {
+    let users = [];
+    if (currentGuild) {
+      for (const m of currentGuild.members.cache.values()) {
+        users.push({ id: m.user.id, name: m.displayName || m.user.username, username: m.user.username });
+      }
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      users = users.filter(u => u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q));
+    }
+    mentionUsers = users.slice(0, 20);
+    if (mentionUsers.length === 0) { hideMentionPopup(); return; }
+    const atX = mentionAtIndex + 2;
+    const popupW = Math.floor(screen.width * 0.25);
+    mentionPopup.left = Math.min(atX, screen.width - popupW - 1);
+    mentionPopup.bottom = 7;
+    const items = mentionUsers.map(u => ` ${u.name.replace(/\{/g, '\\{').replace(/\}/g, '\\}')}`);
+    mentionPopup.setItems(items);
+    mentionPopup.select(0);
+    mentionPopup.show(); mentionPopup.setFront();
+    mentionMode = true; screen.render();
+  }
+  function hideMentionPopup() {
+    mentionMode = false; mentionUsers = []; mentionAtIndex = -1;
+    mentionPopup.hide(); screen.render();
+  }
+  function selectMention() {
+    const user = mentionUsers[mentionPopup.selected || 0];
+    if (!user) return;
+    const val = input.getValue();
+    if (mentionAtIndex >= 0) {
+      const before = val.substring(0, mentionAtIndex);
+      const spaceIdx = val.indexOf(' ', mentionAtIndex);
+      const after = val.substring(spaceIdx === -1 ? val.length : spaceIdx);
+      input.setValue(`${before}<@${user.id}>${after} `);
+    }
+    hideMentionPopup(); input.focus(); screen.render();
+  }
+  input.on('keypress', (ch, key) => {
+    if (mentionMode) {
+      if (key.name === 'up') { if (mentionPopup.selected > 0) mentionPopup.select(mentionPopup.selected - 1); screen.render(); return; }
+      if (key.name === 'down') { if (mentionPopup.selected < mentionUsers.length - 1) mentionPopup.select(mentionPopup.selected + 1); screen.render(); return; }
+      if (key.name === 'tab') { selectMention(); return; }
+      if (key.name === 'escape') { hideMentionPopup(); return; }
+    }
+    setImmediate(() => {
+      const val = input.getValue().replace(/\n/g, '');
+      const lastAt = val.lastIndexOf('@');
+      if (lastAt >= 0) {
+        const afterAt = val.substring(lastAt + 1);
+        if (!afterAt.includes(' ') && afterAt.indexOf('<') === -1) {
+          mentionAtIndex = lastAt;
+          showMentionPopup(afterAt);
+        } else if (mentionMode) { hideMentionPopup(); }
+      } else if (mentionMode) { hideMentionPopup(); }
+      screen.render();
+    });
+  });
 
   function switchMode(newMode) {
     // Hide everything first
@@ -1052,7 +1138,7 @@ export async function startServer(selectedToken = null) {
   try {
     await client.login(token);
   } catch (error) {
-    console.error(chalk.red('Giriş hatası:'), error);
+    console.error(chalk.red('Login error:'), error);
     process.exit(1);
   }
 

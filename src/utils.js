@@ -86,7 +86,7 @@ export async function openFileInBrowser(url, fileName = null) {
 
     exec(command, (error) => {
       if (error) {
-        console.error('Dosya açma hatası:', error);
+        console.error('File open error:', error);
       }
     });
   }

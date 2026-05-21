@@ -1,14 +1,14 @@
 import blessed from 'blessed';
 import { Client } from 'discord.js-selfbot-v13';
 import chalk from 'chalk';
-import dotenv from 'dotenv';
+
 import { exec } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import { join, basename } from 'path';
 import { tmpdir } from 'os';
 import { openFileInBrowser } from './utils.js';
 
-dotenv.config();
+
 
 let client = null;
 let currentChannel = null;
@@ -22,6 +22,9 @@ let selectedIndex = 0;
 let mode = 'threads';
 let replyToMessageId = null;
 let unreadCounts = new Map(); // Store unread counts by channel ID
+let mentionMode = false;
+let mentionUsers = [];
+let mentionAtIndex = -1;
 
 
 export async function startChat(selectedToken = null) {
@@ -29,7 +32,7 @@ export async function startChat(selectedToken = null) {
 
   const token = selectedToken;
   if (!token) {
-    console.error(chalk.red('HATA: Giriş için geçerli bir token bulunamadı!'));
+    console.error(chalk.red('ERROR: No valid token found for login!'));
     process.exit(1);
   }
 
@@ -194,6 +197,107 @@ export async function startChat(selectedToken = null) {
   container.append(messageList);
   container.append(input);
   container.append(helpText);
+
+  // ── Mention Popup ──────────────────────────────
+  const mentionPopup = blessed.list({
+    bottom: 7,
+    left: 0,
+    width: '25%',
+    height: '40%',
+    label: ' {yellow-fg}Mentions{/yellow-fg} ',
+    tags: true,
+    keys: false,
+    vi: false,
+    mouse: true,
+    border: { type: 'line', fg: '#555555' },
+    invertSelected: false,
+    scrollable: true,
+    alwaysScroll: true,
+    transparent: true,
+    scrollbar: { ch: '│', style: { fg: '#555555' } },
+    style: {
+      fg: '#cccccc',
+      selected: { bg: '#0f3460', fg: '#00ff00', bold: true },
+      item: { fg: '#cccccc' },
+      border: { fg: '#444444' },
+      label: { fg: 'yellow' }
+    },
+    hidden: true
+  });
+  screen.append(mentionPopup);
+
+  function showMentionPopup(query) {
+    let users = [];
+    if (currentChannel) {
+      if (currentChannel.recipient) {
+        users.push({ id: currentChannel.recipient.id, name: formatAuthor(currentChannel.recipient), username: currentChannel.recipient.username });
+      }
+      if (currentChannel.recipients) {
+        for (const r of currentChannel.recipients.values()) {
+          users.push({ id: r.id, name: formatAuthor(r), username: r.username });
+        }
+      }
+      users.push({ id: client.user.id, name: client.user.username, username: client.user.username });
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      users = users.filter(u => u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q));
+    }
+    mentionUsers = users.slice(0, 20);
+    if (mentionUsers.length === 0) { hideMentionPopup(); return; }
+    // Position above @
+    const atX = mentionAtIndex + 2;
+    const popupW = Math.floor(screen.width * 0.25);
+    mentionPopup.left = Math.min(atX, screen.width - popupW - 1);
+    mentionPopup.bottom = 7;
+    const items = mentionUsers.map(u => ` ${u.name.replace(/\{/g, '\\{').replace(/\}/g, '\\}')}`);
+    mentionPopup.setItems(items);
+    mentionPopup.select(0);
+    mentionPopup.show();
+    mentionPopup.setFront();
+    mentionMode = true;
+    screen.render();
+  }
+
+  function hideMentionPopup() {
+    mentionMode = false; mentionUsers = []; mentionAtIndex = -1;
+    mentionPopup.hide(); screen.render();
+  }
+
+  function selectMention() {
+    const user = mentionUsers[mentionPopup.selected || 0];
+    if (!user) return;
+    const val = input.getValue();
+    if (mentionAtIndex >= 0) {
+      const before = val.substring(0, mentionAtIndex);
+      const spaceIdx = val.indexOf(' ', mentionAtIndex);
+      const after = val.substring(spaceIdx === -1 ? val.length : spaceIdx);
+      input.setValue(`${before}<@${user.id}>${after} `);
+    }
+    hideMentionPopup(); input.focus(); screen.render();
+  }
+
+  // Mention keypress handler
+  input.on('keypress', (ch, key) => {
+    if (mentionMode) {
+      if (key.name === 'up') { if (mentionPopup.selected > 0) mentionPopup.select(mentionPopup.selected - 1); screen.render(); return; }
+      if (key.name === 'down') { if (mentionPopup.selected < mentionUsers.length - 1) mentionPopup.select(mentionPopup.selected + 1); screen.render(); return; }
+      if (key.name === 'tab') { selectMention(); return; }
+      if (key.name === 'escape') { hideMentionPopup(); return; }
+    }
+    setImmediate(() => {
+      const val = input.getValue().replace(/\n/g, '');
+      const lastAt = val.lastIndexOf('@');
+      if (lastAt >= 0) {
+        const afterAt = val.substring(lastAt + 1);
+        if (!afterAt.includes(' ') && afterAt.indexOf('<') === -1) {
+          mentionAtIndex = lastAt;
+          showMentionPopup(afterAt);
+        } else if (mentionMode) { hideMentionPopup(); }
+      } else if (mentionMode) { hideMentionPopup(); }
+      screen.render();
+    });
+  });
 
   function getStatusEmoji(user) {
     if (!user) return '⚪';
@@ -442,12 +546,19 @@ export async function startChat(selectedToken = null) {
 
   function formatAuthor(user) {
     if (!user) return 'Unknown';
-
-    // Try to get global name from various possible properties
     const globalName = user.globalName || user.global_name || user.displayName;
+    let name = globalName || user.username;
 
-    // Return visible name if available, otherwise username
-    return globalName || user.username;
+    // Nuclear cleanup: strip ALL invisible/problematic unicode
+    name = name
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')  // control chars
+      .replace(/[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\u00AD\u034F\u180E]/g, '')  // invisible
+      .replace(/[\uFE00-\uFE0F]/g, '')  // variation selectors
+      // Remove ALL supplementary plane chars (U+10000+) EXCEPT emojis
+      .replace(/(?!\p{Extended_Pictographic})[\u{10000}-\u{10FFFF}]/gu, '')
+      .trim();
+
+    return name || user.username || 'Unknown';
   }
 
   function getSystemMessageEventText(msg) {
@@ -688,7 +799,7 @@ export async function startChat(selectedToken = null) {
       updateThreadList();
 
     } catch (error) {
-      // Hata durumunda
+      // Error handling
     }
   });
 
@@ -1058,7 +1169,7 @@ export async function startChat(selectedToken = null) {
   try {
     await client.login(token);
   } catch (error) {
-    console.error(chalk.red(`Bağlantı hatası: ${error.message}`));
+    console.error(chalk.red(`Connection error: ${error.message}`));
     process.exit(1);
   }
 
